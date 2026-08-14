@@ -1,5 +1,5 @@
 import { LLMError, type GenerateRequest, type GenerateResponse, type LLMProvider } from "./provider.js";
-import { parseRetryDelayMs, waitMs } from "./gemini.js";
+import { DEFAULT_TIMEOUT_MS, parseRetryDelayMs, waitMs } from "./gemini.js";
 
 /**
  * OpenAI 호환 `/chat/completions` provider.
@@ -13,6 +13,8 @@ export type OpenAICompatOptions = {
   baseURL: string;
   model: string;
   maxRetries?: number;
+  /** 단일 요청 타임아웃. 없으면 응답이 안 와도 영원히 매달린다. */
+  timeoutMs?: number;
   /** 로그·리포트에 표시할 이름 */
   label?: string;
 };
@@ -62,14 +64,21 @@ export class OpenAICompatProvider implements LLMProvider {
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) await sleep(waitMs(attempt, hintedDelayMs));
 
-      const res = await fetch(`${this.opts.baseURL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${this.opts.apiKey}`,
-        },
-        body: JSON.stringify(body),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${this.opts.baseURL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${this.opts.apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+        });
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        continue;
+      }
 
       if (res.ok) {
         const json = (await res.json()) as ChatCompletion;

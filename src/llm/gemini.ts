@@ -16,7 +16,12 @@ export type GeminiOptions = {
   model?: string;
   /** 429/5xx에 대한 재시도 횟수 */
   maxRetries?: number;
+  /** 단일 요청 타임아웃. 없으면 응답이 안 와도 영원히 매달린다. */
+  timeoutMs?: number;
 };
+
+/** 한 번의 생성 요청에 허용할 최대 시간. CI를 무한정 붙잡지 않는다. */
+export const DEFAULT_TIMEOUT_MS = 90_000;
 
 /**
  * Gemini REST API provider.
@@ -28,10 +33,12 @@ export class GeminiProvider implements LLMProvider {
   readonly name = "gemini";
   private readonly model: string;
   private readonly maxRetries: number;
+  private readonly timeoutMs: number;
 
   constructor(private readonly opts: GeminiOptions) {
     this.model = opts.model ?? DEFAULT_MODEL;
     this.maxRetries = opts.maxRetries ?? 3;
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
 
   async generate(req: GenerateRequest): Promise<GenerateResponse> {
@@ -48,14 +55,22 @@ export class GeminiProvider implements LLMProvider {
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) await sleep(waitMs(attempt, hintedDelayMs));
 
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-goog-api-key": this.opts.apiKey,
-        },
-        body: JSON.stringify(body),
-      });
+      let res: Response;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-goog-api-key": this.opts.apiKey,
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(this.timeoutMs),
+        });
+      } catch (err) {
+        // 타임아웃·네트워크 오류는 재시도 가치가 있다.
+        lastError = err instanceof Error ? err.message : String(err);
+        continue;
+      }
 
       if (res.ok) {
         const json = (await res.json()) as GeminiResponse;

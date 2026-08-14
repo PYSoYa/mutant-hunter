@@ -91,16 +91,19 @@ var LLMError = class extends Error {
 // src/llm/gemini.ts
 var ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 var DEFAULT_MODEL = "gemini-flash-latest";
+var DEFAULT_TIMEOUT_MS = 9e4;
 var GeminiProvider = class {
   constructor(opts) {
     this.opts = opts;
     this.model = opts.model ?? DEFAULT_MODEL;
     this.maxRetries = opts.maxRetries ?? 3;
+    this.timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   }
   opts;
   name = "gemini";
   model;
   maxRetries;
+  timeoutMs;
   async generate(req) {
     const url = `${ENDPOINT}/${this.model}:generateContent`;
     const body = {
@@ -112,14 +115,21 @@ var GeminiProvider = class {
     let hintedDelayMs;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) await sleep(waitMs(attempt, hintedDelayMs));
-      const res = await fetch(url, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          "x-goog-api-key": this.opts.apiKey
-        },
-        body: JSON.stringify(body)
-      });
+      let res;
+      try {
+        res = await fetch(url, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "x-goog-api-key": this.opts.apiKey
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(this.timeoutMs)
+        });
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        continue;
+      }
       if (res.ok) {
         const json = await res.json();
         const text = json.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("");
@@ -183,6 +193,12 @@ var PRESETS = {
     baseURL: "https://api.groq.com/openai/v1",
     model: "llama-3.3-70b-versatile"
   },
+  mistral: {
+    baseURL: "https://api.mistral.ai/v1",
+    // 코드 전용 모델(codestral-latest)도 같은 엔드포인트에서 쓸 수 있다.
+    // 어느 쪽이 뮤턴트를 잘 죽이는지는 평가 하네스로 재서 정한다.
+    model: "mistral-small-latest"
+  },
   openrouter: {
     baseURL: "https://openrouter.ai/api/v1",
     model: "deepseek/deepseek-chat"
@@ -210,14 +226,21 @@ var OpenAICompatProvider = class {
     let hintedDelayMs;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) await sleep2(waitMs(attempt, hintedDelayMs));
-      const res = await fetch(`${this.opts.baseURL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${this.opts.apiKey}`
-        },
-        body: JSON.stringify(body)
-      });
+      let res;
+      try {
+        res = await fetch(`${this.opts.baseURL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${this.opts.apiKey}`
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS)
+        });
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        continue;
+      }
       if (res.ok) {
         const json = await res.json();
         const text = json.choices?.[0]?.message?.content;
@@ -257,9 +280,56 @@ function sleep2(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+// src/llm/rate-limit.ts
+var RateLimiter = class {
+  constructor(minIntervalMs, now = () => Date.now(), sleep3 = defaultSleep) {
+    this.minIntervalMs = minIntervalMs;
+    this.now = now;
+    this.sleep = sleep3;
+  }
+  minIntervalMs;
+  now;
+  sleep;
+  nextAllowedAt = 0;
+  /** 다음 호출이 허용될 때까지 기다린다. */
+  async acquire() {
+    const current = this.now();
+    const waitMs2 = Math.max(0, this.nextAllowedAt - current);
+    if (waitMs2 > 0) await this.sleep(waitMs2);
+    this.nextAllowedAt = Math.max(current, this.nextAllowedAt) + this.minIntervalMs;
+    return waitMs2;
+  }
+};
+function intervalForRpm(requestsPerMinute) {
+  if (requestsPerMinute <= 0) return 0;
+  return Math.ceil(6e4 * 11 / (requestsPerMinute * 10));
+}
+function withRateLimit(provider, limiter, onWait) {
+  return {
+    name: provider.name,
+    async generate(req) {
+      const waited = await limiter.acquire();
+      if (waited > 0) onWait?.(waited);
+      return provider.generate(req);
+    }
+  };
+}
+function limiterFromEnv(env = process.env) {
+  const explicit = Number(env["MH_MIN_INTERVAL_MS"]);
+  if (Number.isFinite(explicit) && explicit >= 0) return new RateLimiter(explicit);
+  const rpm = Number(env["MH_RPM"]);
+  const effective = Number.isFinite(rpm) && rpm > 0 ? rpm : 20;
+  return new RateLimiter(intervalForRpm(effective));
+}
+function defaultSleep(ms) {
+  return new Promise((r) => setTimeout(r, ms));
+}
+
 // src/llm/index.ts
-function providerFromEnv(env = process.env) {
-  return openAICompatFromEnv(env) ?? geminiFromEnv(env);
+function providerFromEnv(env = process.env, onWait) {
+  const base = openAICompatFromEnv(env) ?? geminiFromEnv(env);
+  if (!base) return void 0;
+  return withRateLimit(base, limiterFromEnv(env), onWait);
 }
 
 // src/pipeline.ts
@@ -804,7 +874,17 @@ function buildStrykerConfig(opts) {
     timeoutMS: opts.timeoutMS ?? 15e3,
     tempDirName: `${WORK_DIR}/tmp`,
     // 대상 repo에 커밋되지 않도록 증분 캐시도 작업 디렉터리 안에 둔다.
-    incremental: false
+    incremental: false,
+    /**
+     * Stryker는 기본적으로 샌드박스의 파일 맨 위에 `// @ts-nocheck`를 붙인다.
+     * 그러면 **모든 줄 번호가 1씩 밀린다.**
+     *
+     * 이 도구는 뮤턴트를 줄/칸 오프셋으로 적용하고, 대상 repo의 테스트도
+     * 줄 번호를 단언할 수 있다. 실제로 우리 자신을 대상으로 돌렸을 때
+     * 이 한 줄 때문에 초기 테스트 실행이 실패해 스캔이 통째로 죽었다.
+     * 샌드박스는 원본과 같은 줄 번호를 가져야 한다.
+     */
+    disableTypeChecks: false
   };
   if (opts.excludeStringLiterals) {
     config["mutator"] = { excludedMutations: ["StringLiteral"] };
