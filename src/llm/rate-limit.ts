@@ -1,5 +1,3 @@
-import type { GenerateRequest, GenerateResponse, LLMProvider } from "./provider.js";
-
 /**
  * 호출 사이에 최소 간격을 강제한다.
  *
@@ -36,25 +34,6 @@ export function intervalForRpm(requestsPerMinute: number): number {
   // 경계에 딱 맞추면 서버 쪽 창(window)이 조금만 어긋나도 429가 난다. 10% 여유.
   // 60_000/rpm * 1.1 로 계산하면 부동소수 오차로 3300 대신 3301이 나온다.
   return Math.ceil((60_000 * 11) / (requestsPerMinute * 10));
-}
-
-/**
- * provider를 감싸 호출 간격을 지키게 한다.
- * provider 구현마다 페이싱을 복제하지 않기 위해 데코레이터로 둔다.
- */
-export function withRateLimit(
-  provider: LLMProvider,
-  limiter: RateLimiter,
-  onWait?: (waitedMs: number) => void,
-): LLMProvider {
-  return {
-    name: provider.name,
-    async generate(req: GenerateRequest): Promise<GenerateResponse> {
-      const waited = await limiter.acquire();
-      if (waited > 0) onWait?.(waited);
-      return provider.generate(req);
-    },
-  };
 }
 
 /**

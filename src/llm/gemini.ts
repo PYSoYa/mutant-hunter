@@ -1,4 +1,5 @@
 import { LLMError, type GenerateRequest, type GenerateResponse, type LLMProvider } from "./provider.js";
+import type { RateLimiter } from "./rate-limit.js";
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
@@ -18,6 +19,14 @@ export type GeminiOptions = {
   maxRetries?: number;
   /** 단일 요청 타임아웃. 없으면 응답이 안 와도 영원히 매달린다. */
   timeoutMs?: number;
+  /**
+   * HTTP 요청 단위 페이싱.
+   *
+   * generate() 바깥에서만 페이싱하면 재시도가 그 아래에서 일어나
+   * 제한을 우회한다. 논리적 호출 1회가 요청 4회를 순식간에 쏘면
+   * 분당 한도는 그대로 넘는다 — 실측에서 이것 때문에 429가 계속 났다.
+   */
+  rateLimiter?: RateLimiter;
 };
 
 /** 한 번의 생성 요청에 허용할 최대 시간. CI를 무한정 붙잡지 않는다. */
@@ -54,6 +63,7 @@ export class GeminiProvider implements LLMProvider {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) await sleep(waitMs(attempt, hintedDelayMs));
+      await this.opts.rateLimiter?.acquire();
 
       let res: Response;
       try {
@@ -102,10 +112,13 @@ export class GeminiProvider implements LLMProvider {
 }
 
 /** 환경변수에서 provider를 만든다. 키가 없으면 undefined. */
-export function geminiFromEnv(env = process.env): GeminiProvider | undefined {
+export function geminiFromEnv(
+  env = process.env,
+  rateLimiter?: RateLimiter,
+): GeminiProvider | undefined {
   const apiKey = env["GEMINI_API_KEY"];
   if (!apiKey) return undefined;
-  return new GeminiProvider({ apiKey, model: env["GEMINI_MODEL"] });
+  return new GeminiProvider({ apiKey, model: env["GEMINI_MODEL"], rateLimiter });
 }
 
 export function backoffMs(attempt: number): number {

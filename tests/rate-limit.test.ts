@@ -3,9 +3,7 @@ import {
   intervalForRpm,
   limiterFromEnv,
   RateLimiter,
-  withRateLimit,
 } from "../src/llm/rate-limit.js";
-import { MockProvider } from "../src/llm/provider.js";
 
 /** 실제 시간을 쓰지 않는 시계. 테스트가 느려지거나 흔들리면 안 된다. */
 function fakeClock(start = 0) {
@@ -93,30 +91,5 @@ describe("limiterFromEnv", () => {
 
   it("잘못된 값은 무시하고 기본값으로 간다", () => {
     expect(() => limiterFromEnv({ MH_RPM: "abc" })).not.toThrow();
-  });
-});
-
-describe("withRateLimit", () => {
-  it("provider 이름을 유지한다", () => {
-    const wrapped = withRateLimit(new MockProvider(["x"]), new RateLimiter(0));
-    expect(wrapped.name).toBe("mock");
-  });
-
-  it("응답을 그대로 통과시킨다", async () => {
-    const wrapped = withRateLimit(new MockProvider(["결과"]), new RateLimiter(0));
-    expect((await wrapped.generate({ system: "", user: "" })).text).toBe("결과");
-  });
-
-  it("대기가 발생하면 콜백으로 알린다", async () => {
-    const c = fakeClock();
-    const waits: number[] = [];
-    const wrapped = withRateLimit(
-      new MockProvider(["a", "b"]),
-      new RateLimiter(500, c.now, c.sleep),
-      (ms) => waits.push(ms),
-    );
-    await wrapped.generate({ system: "", user: "" });
-    await wrapped.generate({ system: "", user: "" });
-    expect(waits).toEqual([500]);
   });
 });

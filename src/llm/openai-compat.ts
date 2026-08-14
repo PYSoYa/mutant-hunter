@@ -1,5 +1,6 @@
 import { LLMError, type GenerateRequest, type GenerateResponse, type LLMProvider } from "./provider.js";
 import { DEFAULT_TIMEOUT_MS, parseRetryDelayMs, waitMs } from "./gemini.js";
+import type { RateLimiter } from "./rate-limit.js";
 
 /**
  * OpenAI 호환 `/chat/completions` provider.
@@ -15,6 +16,8 @@ export type OpenAICompatOptions = {
   maxRetries?: number;
   /** 단일 요청 타임아웃. 없으면 응답이 안 와도 영원히 매달린다. */
   timeoutMs?: number;
+  /** HTTP 요청 단위 페이싱. 재시도가 제한을 우회하지 않도록 매 시도마다 건다. */
+  rateLimiter?: RateLimiter;
   /** 로그·리포트에 표시할 이름 */
   label?: string;
 };
@@ -63,6 +66,7 @@ export class OpenAICompatProvider implements LLMProvider {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) await sleep(waitMs(attempt, hintedDelayMs));
+      await this.opts.rateLimiter?.acquire();
 
       let res: Response;
       try {
@@ -116,6 +120,7 @@ export class OpenAICompatProvider implements LLMProvider {
  */
 export function openAICompatFromEnv(
   env: NodeJS.ProcessEnv = process.env,
+  rateLimiter?: RateLimiter,
 ): OpenAICompatProvider | undefined {
   const apiKey = env["MH_API_KEY"];
   if (!apiKey) return undefined;
@@ -132,6 +137,7 @@ export function openAICompatFromEnv(
     apiKey,
     baseURL,
     model,
+    rateLimiter,
     label: presetName ?? "openai-compat",
   });
 }

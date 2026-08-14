@@ -115,6 +115,7 @@ var GeminiProvider = class {
     let hintedDelayMs;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) await sleep(waitMs(attempt, hintedDelayMs));
+      await this.opts.rateLimiter?.acquire();
       let res;
       try {
         res = await fetch(url, {
@@ -150,10 +151,10 @@ var GeminiProvider = class {
     throw new LLMError(`\uC7AC\uC2DC\uB3C4 ${this.maxRetries}\uD68C \uD6C4\uC5D0\uB3C4 \uC2E4\uD328: ${lastError}`);
   }
 };
-function geminiFromEnv(env = process.env) {
+function geminiFromEnv(env = process.env, rateLimiter) {
   const apiKey = env["GEMINI_API_KEY"];
   if (!apiKey) return void 0;
-  return new GeminiProvider({ apiKey, model: env["GEMINI_MODEL"] });
+  return new GeminiProvider({ apiKey, model: env["GEMINI_MODEL"], rateLimiter });
 }
 function backoffMs(attempt) {
   return Math.min(1e3 * 2 ** (attempt - 1), 8e3);
@@ -226,6 +227,7 @@ var OpenAICompatProvider = class {
     let hintedDelayMs;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) await sleep2(waitMs(attempt, hintedDelayMs));
+      await this.opts.rateLimiter?.acquire();
       let res;
       try {
         res = await fetch(`${this.opts.baseURL}/chat/completions`, {
@@ -261,7 +263,7 @@ var OpenAICompatProvider = class {
     throw new LLMError(`\uC7AC\uC2DC\uB3C4 ${this.maxRetries}\uD68C \uD6C4\uC5D0\uB3C4 \uC2E4\uD328: ${lastError}`);
   }
 };
-function openAICompatFromEnv(env = process.env) {
+function openAICompatFromEnv(env = process.env, rateLimiter) {
   const apiKey = env["MH_API_KEY"];
   if (!apiKey) return void 0;
   const presetName = env["MH_PROVIDER"];
@@ -273,6 +275,7 @@ function openAICompatFromEnv(env = process.env) {
     apiKey,
     baseURL,
     model,
+    rateLimiter,
     label: presetName ?? "openai-compat"
   });
 }
@@ -304,16 +307,6 @@ function intervalForRpm(requestsPerMinute) {
   if (requestsPerMinute <= 0) return 0;
   return Math.ceil(6e4 * 11 / (requestsPerMinute * 10));
 }
-function withRateLimit(provider, limiter, onWait) {
-  return {
-    name: provider.name,
-    async generate(req) {
-      const waited = await limiter.acquire();
-      if (waited > 0) onWait?.(waited);
-      return provider.generate(req);
-    }
-  };
-}
 function limiterFromEnv(env = process.env) {
   const explicit = Number(env["MH_MIN_INTERVAL_MS"]);
   if (Number.isFinite(explicit) && explicit >= 0) return new RateLimiter(explicit);
@@ -326,10 +319,9 @@ function defaultSleep(ms) {
 }
 
 // src/llm/index.ts
-function providerFromEnv(env = process.env, onWait) {
-  const base = openAICompatFromEnv(env) ?? geminiFromEnv(env);
-  if (!base) return void 0;
-  return withRateLimit(base, limiterFromEnv(env), onWait);
+function providerFromEnv(env = process.env) {
+  const rateLimiter = limiterFromEnv(env);
+  return openAICompatFromEnv(env, rateLimiter) ?? geminiFromEnv(env, rateLimiter);
 }
 
 // src/pipeline.ts
