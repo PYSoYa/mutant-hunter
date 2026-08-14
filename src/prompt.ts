@@ -1,3 +1,4 @@
+import { classifyFailure, retryGuidance } from "./failure.js";
 import type { Mutant } from "./types.js";
 
 export const SYSTEM_PROMPT = `당신은 TypeScript/JavaScript 테스트를 작성하는 도구다.
@@ -95,15 +96,15 @@ export function buildUserPrompt(ctx: PromptContext): string {
   }
 
   if (previousFailure) {
+    const guidance = retryGuidance(
+      classifyFailure(previousFailure.detail, previousFailure.gate),
+    );
+
     parts.push(
       `## 직전 시도가 실패했다\n` +
         `게이트: ${previousFailure.gate}\n` +
         `사유: ${truncate(previousFailure.detail, MAX_FAILURE_CHARS)}\n\n` +
-        (previousFailure.gate === "kills-mutant"
-          ? "단언이 느슨해서 뮤턴트 코드에서도 통과했다. " +
-            "뮤턴트가 만들어내는 값과 원본이 만들어내는 값이 어떻게 다른지 " +
-            "먼저 짚고, 그 차이를 정확히 겨냥하는 단언을 써라."
-          : "위 사유를 해결한 테스트를 다시 작성하라."),
+        guidance,
     );
   }
 

@@ -61,7 +61,7 @@ describe("buildUserPrompt", () => {
       sourceSnippet: "x",
       previousFailure: { gate: "kills-mutant", detail: "뮤턴트가 살아남았다" },
     });
-    expect(p).toContain("단언이 느슨해서");
+    expect(p).toContain("차이를 정확히 겨냥");
   });
 
   it("다른 게이트 실패에는 일반 재시도 지침을 붙인다", () => {

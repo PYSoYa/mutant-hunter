@@ -26,6 +26,8 @@ export type EntryMetrics = {
   rejectedBy?: Record<string, number>;
   /** 모든 시도 기준 게이트 폐기 — 안전망의 크기 */
   gateRejections?: Record<string, number>;
+  /** 실패 원인별 집계 — 어디를 고쳐야 하는지 알려주는 숫자 */
+  failureKinds?: Record<string, number>;
   rescuedByRetry?: number;
 };
 
@@ -65,6 +67,7 @@ export function computeMetrics(
     apiCalls: summary.totalAttempts - (summary.cacheHits ?? 0),
     rejectedBy: summary.rejectedBy,
     gateRejections: summary.gateRejections,
+    failureKinds: summary.failureKinds,
     rescuedByRetry: summary.rescuedByRetry,
   };
 }
@@ -84,6 +87,7 @@ export type Aggregate = {
   cacheHits?: number;
   rejectedBy?: Record<string, number>;
   gateRejections?: Record<string, number>;
+  failureKinds?: Record<string, number>;
   rescuedByRetry?: number;
   /** 게이트가 떨어뜨린 총 횟수 */
   totalGateRejections?: number;
@@ -110,6 +114,7 @@ export function aggregate(entries: EntryMetrics[]): Aggregate {
   let rescuedByRetry = 0;
   const rejectedBy: Record<string, number> = {};
   const gateRejections: Record<string, number> = {};
+  const failureKinds: Record<string, number> = {};
 
   for (const e of entries) {
     totalMutants += e.totalMutants;
@@ -130,6 +135,9 @@ export function aggregate(entries: EntryMetrics[]): Aggregate {
       }
       for (const [k, n] of Object.entries(e.gateRejections ?? {})) {
         gateRejections[k] = (gateRejections[k] ?? 0) + n;
+      }
+      for (const [k, n] of Object.entries(e.failureKinds ?? {})) {
+        failureKinds[k] = (failureKinds[k] ?? 0) + n;
       }
     }
   }
@@ -154,6 +162,7 @@ export function aggregate(entries: EntryMetrics[]): Aggregate {
     cacheHits,
     rejectedBy,
     gateRejections,
+    failureKinds,
     rescuedByRetry,
     totalGateRejections: Object.values(gateRejections).reduce((a, b) => a + b, 0),
   };
