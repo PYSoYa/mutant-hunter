@@ -518,7 +518,9 @@ function typeText(text, limit = 120) {
 
 // src/failure.ts
 var ASSERTION = /expected\s+(.+?)\s+to\s+(?:be|equal|deeply equal|contain|match)\s+(.+?)(?:\s*\/\/|$)/ims;
-function classifyFailure(detail) {
+function classifyFailure(detail, gate) {
+  if (gate === "kills-mutant") return { kind: "not-killed" };
+  if (gate === "parses") return { kind: "syntax" };
   if (/상한을 넘겨 강제 종료|초과로 강제 종료/.test(detail)) {
     return { kind: "timeout" };
   }
@@ -547,6 +549,8 @@ function classifyFailure(detail) {
 }
 function retryGuidance(failure) {
   switch (failure.kind) {
+    case "not-killed":
+      return "\uC6D0\uBCF8\uC5D0\uC11C\uB294 \uD1B5\uACFC\uD588\uC9C0\uB9CC \uBBA4\uD134\uD2B8\uC5D0\uC11C\uB3C4 \uD1B5\uACFC\uD588\uB2E4. \uACB0\uD568\uC744 \uC7A1\uC9C0 \uBABB\uD558\uB294 \uD14C\uC2A4\uD2B8\uB2E4. \uBBA4\uD134\uD2B8\uAC00 \uB9CC\uB4E4\uC5B4\uB0B4\uB294 \uAC12\uACFC \uC6D0\uBCF8\uC774 \uB9CC\uB4E4\uC5B4\uB0B4\uB294 \uAC12\uC774 \uC5B4\uB5BB\uAC8C \uB2E4\uB978\uC9C0 \uBA3C\uC800 \uC9DA\uACE0, \uADF8 \uCC28\uC774\uB97C \uC815\uD655\uD788 \uACA8\uB0E5\uD558\uB294 \uB2E8\uC5B8\uC744 \uC368\uB77C.";
     case "assertion":
       if (failure.actual && failure.expected) {
         return `\uB2E8\uC5B8\uC774 \uD2C0\uB838\uB2E4. \uC6D0\uBCF8 \uCF54\uB4DC\uB294 \uC2E4\uC81C\uB85C \`${failure.actual}\`\uB97C \uB0B4\uB193\uC558\uB294\uB370 \uD14C\uC2A4\uD2B8\uB294 \`${failure.expected}\`\uB97C \uAE30\uB300\uD588\uB2E4.
@@ -651,7 +655,9 @@ ${sourceSnippet2}
     );
   }
   if (previousFailure) {
-    const guidance = previousFailure.gate === "kills-mutant" ? "\uB2E8\uC5B8\uC774 \uB290\uC2A8\uD574\uC11C \uBBA4\uD134\uD2B8 \uCF54\uB4DC\uC5D0\uC11C\uB3C4 \uD1B5\uACFC\uD588\uB2E4. \uBBA4\uD134\uD2B8\uAC00 \uB9CC\uB4E4\uC5B4\uB0B4\uB294 \uAC12\uACFC \uC6D0\uBCF8\uC774 \uB9CC\uB4E4\uC5B4\uB0B4\uB294 \uAC12\uC774 \uC5B4\uB5BB\uAC8C \uB2E4\uB978\uC9C0 \uBA3C\uC800 \uC9DA\uACE0, \uADF8 \uCC28\uC774\uB97C \uC815\uD655\uD788 \uACA8\uB0E5\uD558\uB294 \uB2E8\uC5B8\uC744 \uC368\uB77C." : retryGuidance(classifyFailure(previousFailure.detail));
+    const guidance = retryGuidance(
+      classifyFailure(previousFailure.detail, previousFailure.gate)
+    );
     parts.push(
       `## \uC9C1\uC804 \uC2DC\uB3C4\uAC00 \uC2E4\uD328\uD588\uB2E4
 \uAC8C\uC774\uD2B8: ${previousFailure.gate}
@@ -1145,7 +1151,7 @@ ${userPrompt}`,
       index: i,
       gates: outcome.gates,
       rejectedAt: outcome.rejectedAt,
-      failureKind: failedGate ? classifyFailure(failedGate.detail).kind : void 0
+      failureKind: failedGate ? classifyFailure(failedGate.detail, failedGate.gate).kind : void 0
     });
     if (outcome.accepted) {
       return { mutant, accepted: true, testSource, testFileRel, attempts };

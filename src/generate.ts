@@ -159,7 +159,9 @@ export async function generateKillingTest(
       index: i,
       gates: outcome.gates,
       rejectedAt: outcome.rejectedAt,
-      failureKind: failedGate ? classifyFailure(failedGate.detail).kind : undefined,
+      failureKind: failedGate
+        ? classifyFailure(failedGate.detail, failedGate.gate).kind
+        : undefined,
     });
 
     if (outcome.accepted) {

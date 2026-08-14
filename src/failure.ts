@@ -6,6 +6,8 @@
  * 분류가 의사결정의 근거라면 코드에 있고 테스트로 지켜져야 한다.
  */
 export type FailureKind =
+  /** 뮤턴트를 죽이지 못함 — 오류가 아니라 의미론적 결과다 */
+  | "not-killed"
   | "syntax"
   | "import"
   | "missing-api"
@@ -25,7 +27,17 @@ export type Failure = {
 /** `expected 'a' to be 'b'` — vitest는 실제값을 먼저, 기대값을 나중에 쓴다. */
 const ASSERTION = /expected\s+(.+?)\s+to\s+(?:be|equal|deeply equal|contain|match)\s+(.+?)(?:\s*\/\/|$)/ims;
 
-export function classifyFailure(detail: string): Failure {
+/**
+ * @param gate 어느 게이트에서 떨어졌는지. 알면 텍스트를 추측할 필요가 없다.
+ *
+ * 게이트를 안 넘겼더니 kills-mutant 폐기 42건이 전부 `unknown`으로 뭉개졌다.
+ * 그건 오류가 아니라 "못 죽였다"는 결과이고, 우리 parses 게이트의 메시지도
+ * 우리 분류기가 못 알아봤다. 구조로 아는 것을 텍스트로 되짚지 않는다.
+ */
+export function classifyFailure(detail: string, gate?: string): Failure {
+  if (gate === "kills-mutant") return { kind: "not-killed" };
+  if (gate === "parses") return { kind: "syntax" };
+
   if (/상한을 넘겨 강제 종료|초과로 강제 종료/.test(detail)) {
     return { kind: "timeout" };
   }
@@ -65,6 +77,13 @@ export function classifyFailure(detail: string): Failure {
  */
 export function retryGuidance(failure: Failure): string {
   switch (failure.kind) {
+    case "not-killed":
+      return (
+        "원본에서는 통과했지만 뮤턴트에서도 통과했다. 결함을 잡지 못하는 테스트다. " +
+        "뮤턴트가 만들어내는 값과 원본이 만들어내는 값이 어떻게 다른지 먼저 짚고, " +
+        "그 차이를 정확히 겨냥하는 단언을 써라."
+      );
+
     case "assertion":
       if (failure.actual && failure.expected) {
         return (

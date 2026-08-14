@@ -108,3 +108,24 @@ describe("retryGuidance", () => {
     expect(retryGuidance({ kind: "unknown" })).toBeTruthy();
   });
 });
+
+describe("게이트를 알면 텍스트를 추측하지 않는다", () => {
+  it("kills-mutant는 오류가 아니라 결과다", () => {
+    // 게이트를 안 넘겼더니 이 42건이 전부 unknown으로 뭉개졌다.
+    const f = classifyFailure("뮤턴트가 살아남았다 — 결함을 잡지 못하는 테스트", "kills-mutant");
+    expect(f.kind).toBe("not-killed");
+  });
+
+  it("parses 게이트 메시지를 문법 오류로 안다", () => {
+    // 우리 분류기가 우리 도구의 메시지를 못 알아봤다.
+    expect(classifyFailure("L3:5 '}' expected.", "parses").kind).toBe("syntax");
+  });
+
+  it("게이트를 모르면 텍스트로 분류한다", () => {
+    expect(classifyFailure("AssertionError: expected 1 to be 2").kind).toBe("assertion");
+  });
+
+  it("not-killed에는 차이를 겨냥하라는 지침을 준다", () => {
+    expect(retryGuidance({ kind: "not-killed" })).toContain("차이를 정확히 겨냥");
+  });
+});

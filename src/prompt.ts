@@ -96,12 +96,9 @@ export function buildUserPrompt(ctx: PromptContext): string {
   }
 
   if (previousFailure) {
-    const guidance =
-      previousFailure.gate === "kills-mutant"
-        ? "단언이 느슨해서 뮤턴트 코드에서도 통과했다. " +
-          "뮤턴트가 만들어내는 값과 원본이 만들어내는 값이 어떻게 다른지 " +
-          "먼저 짚고, 그 차이를 정확히 겨냥하는 단언을 써라."
-        : retryGuidance(classifyFailure(previousFailure.detail));
+    const guidance = retryGuidance(
+      classifyFailure(previousFailure.detail, previousFailure.gate),
+    );
 
     parts.push(
       `## 직전 시도가 실패했다\n` +
