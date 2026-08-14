@@ -1,0 +1,37 @@
+{
+  "label": "baseline",
+  "entries": [
+    {
+      "name": "jsonGuard-scanner",
+      "status": "scanned",
+      "durationMs": 11540,
+      "mutationScore": 63.1578947368421,
+      "totalMutants": 57,
+      "survived": 17,
+      "noCoverage": 4,
+      "candidates": 12,
+      "filtered": {
+        "no-coverage": 4,
+        "noise-string-literal": 5
+      }
+    },
+    {
+      "name": "self-dogfood",
+      "status": "no-changes",
+      "durationMs": 59,
+      "mutationScore": 0,
+      "totalMutants": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "candidates": 0,
+      "filtered": {}
+    }
+  ],
+  "aggregate": {
+    "entries": 2,
+    "totalMutants": 57,
+    "totalCandidates": 12,
+    "weightedMutationScore": 63.1578947368421,
+    "totalDurationMs": 11599
+  }
+}

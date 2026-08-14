@@ -1,0 +1,40 @@
+{
+  "label": "gemini-flash-v2",
+  "entries": [
+    {
+      "name": "jsonGuard-scanner",
+      "status": "generated",
+      "durationMs": 334667,
+      "mutationScore": 63.1578947368421,
+      "totalMutants": 57,
+      "survived": 17,
+      "noCoverage": 4,
+      "candidates": 12,
+      "filtered": {
+        "no-coverage": 4,
+        "noise-string-literal": 5
+      },
+      "attempted": 5,
+      "accepted": 4,
+      "acceptRate": 80,
+      "llmCalls": 4,
+      "rejectedBy": {
+        "llm-error": 1
+      }
+    }
+  ],
+  "aggregate": {
+    "entries": 1,
+    "totalMutants": 57,
+    "totalCandidates": 12,
+    "weightedMutationScore": 63.1578947368421,
+    "totalDurationMs": 334667,
+    "attempted": 5,
+    "accepted": 4,
+    "acceptRate": 80,
+    "llmCalls": 4,
+    "rejectedBy": {
+      "llm-error": 1
+    }
+  }
+}
