@@ -1,0 +1,8 @@
+node_modules/
+dist/
+reports/
+*.log
+
+# 대상 repo에서든 자기 자신에서든 실행 시 생기는 작업 디렉터리
+.mutant-hunter/
+.stryker-tmp/

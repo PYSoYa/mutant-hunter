@@ -1,0 +1,25 @@
+{
+  "name": "mutant-hunter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "뮤테이션 테스팅으로 테스트 갭을 찾고, 실행으로 증명된 테스트만 PR에 제안하는 봇",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "scan": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "ts-morph": "^27.0.0"
+  },
+  "devDependencies": {
+    "@stryker-mutator/core": "^9.6.1",
+    "@stryker-mutator/vitest-runner": "^9.6.1",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0",
+    "vitest": "^4.1.7"
+  }
+}
