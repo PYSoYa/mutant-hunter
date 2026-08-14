@@ -1,0 +1,87 @@
+{
+  "label": "mistral-wide",
+  "provider": "mistral",
+  "entries": [
+    {
+      "name": "self-week3-gates",
+      "status": "generated",
+      "durationMs": 133123,
+      "mutationScore": 28.508124076809455,
+      "totalMutants": 677,
+      "survived": 51,
+      "noCoverage": 433,
+      "candidates": 24,
+      "filtered": {
+        "no-coverage": 307,
+        "noise-string-literal": 153
+      },
+      "attempted": 8,
+      "accepted": 2,
+      "acceptRate": 25,
+      "llmCalls": 15,
+      "rejectedBy": {
+        "kills-mutant": 1,
+        "passes-on-original": 5
+      }
+    },
+    {
+      "name": "self-week4-action",
+      "status": "generated",
+      "durationMs": 132711,
+      "mutationScore": 19.93006993006993,
+      "totalMutants": 572,
+      "survived": 72,
+      "noCoverage": 386,
+      "candidates": 20,
+      "filtered": {
+        "no-coverage": 266,
+        "noise-string-literal": 172
+      },
+      "attempted": 8,
+      "accepted": 3,
+      "acceptRate": 37.5,
+      "llmCalls": 15,
+      "rejectedBy": {
+        "kills-mutant": 3,
+        "passes-on-original": 2
+      }
+    },
+    {
+      "name": "self-week2-scanner",
+      "status": "generated",
+      "durationMs": 128135,
+      "mutationScore": 47.14003944773176,
+      "totalMutants": 507,
+      "survived": 65,
+      "noCoverage": 203,
+      "candidates": 58,
+      "filtered": {
+        "no-coverage": 135,
+        "noise-string-literal": 75
+      },
+      "attempted": 8,
+      "accepted": 1,
+      "acceptRate": 12.5,
+      "llmCalls": 15,
+      "rejectedBy": {
+        "kills-mutant": 4,
+        "passes-on-original": 3
+      }
+    }
+  ],
+  "aggregate": {
+    "entries": 3,
+    "totalMutants": 1756,
+    "totalCandidates": 102,
+    "weightedMutationScore": 31.09339407744875,
+    "totalDurationMs": 393969,
+    "attempted": 24,
+    "accepted": 6,
+    "acceptRate": 25,
+    "llmCalls": 45,
+    "rejectedBy": {
+      "kills-mutant": 8,
+      "passes-on-original": 10
+    }
+  }
+}

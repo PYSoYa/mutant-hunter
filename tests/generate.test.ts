@@ -52,6 +52,57 @@ describe("summarize", () => {
   });
 });
 
+describe("summarize — 게이트 폐기 전수 집계", () => {
+  it("모든 시도의 게이트 폐기를 센다", () => {
+    // rejectedBy는 마지막 시도만 센다. 1차에서 걸렸다가 2차에 통과하면
+    // "게이트가 걸러냈다"는 사실이 사라진다 — 안전망 크기 측정에 정반대다.
+    const s = summarize([
+      result({
+        accepted: true,
+        attempts: [
+          { index: 0, gates: [], rejectedAt: "kills-mutant" },
+          { index: 1, gates: [] },
+        ],
+      }),
+    ]);
+    expect(s.gateRejections).toEqual({ "kills-mutant": 1 });
+    expect(s.rejectedBy).toEqual({});
+    expect(s.rescuedByRetry).toBe(1);
+  });
+
+  it("게이트에 걸린 적 없이 채택된 것은 구조된 게 아니다", () => {
+    const s = summarize([
+      result({ accepted: true, attempts: [{ index: 0, gates: [] }] }),
+    ]);
+    expect(s.rescuedByRetry).toBe(0);
+    expect(s.gateRejections).toEqual({});
+  });
+
+  it("끝내 폐기된 것은 양쪽 모두에 잡힌다", () => {
+    const s = summarize([
+      result({
+        attempts: [
+          { index: 0, gates: [], rejectedAt: "kills-mutant" },
+          { index: 1, gates: [], rejectedAt: "passes-on-original" },
+        ],
+      }),
+    ]);
+    expect(s.gateRejections).toEqual({
+      "kills-mutant": 1,
+      "passes-on-original": 1,
+    });
+    expect(s.rejectedBy).toEqual({ "passes-on-original": 1 });
+    expect(s.rescuedByRetry).toBe(0);
+  });
+
+  it("LLM 오류는 게이트 폐기로 세지 않는다", () => {
+    // 쿼터 소진을 안전망 실적에 섞으면 게이트 효과가 부풀려진다.
+    const s = summarize([result({ error: "429" })]);
+    expect(s.gateRejections).toEqual({});
+    expect(s.rejectedBy).toEqual({ "llm-error": 1 });
+  });
+});
+
 describe("MockProvider", () => {
   it("정해둔 응답을 순서대로 돌려준다", async () => {
     const p = new MockProvider(["첫번째", "두번째"]);

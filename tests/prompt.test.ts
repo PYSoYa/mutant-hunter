@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildUserPrompt, extractTestSource, sourceSnippet } from "../src/prompt.js";
+import {
+  buildUserPrompt,
+  extractTestSource,
+  sourceSnippet,
+  SYSTEM_PROMPT,
+} from "../src/prompt.js";
 import type { Mutant } from "../src/types.js";
 
 const MUTANT: Mutant = {
@@ -67,6 +72,23 @@ describe("buildUserPrompt", () => {
     });
     expect(p).toContain("SyntaxError");
     expect(p).not.toContain("단언이 느슨해서");
+  });
+});
+
+describe("SYSTEM_PROMPT", () => {
+  it("기대값을 짐작하지 말라고 명시한다", () => {
+    // 실측에서 가장 흔한 실패가 기대값 오판이었다 (passes-on-original).
+    expect(SYSTEM_PROMPT).toMatch(/짐작하지 마라/);
+  });
+
+  it("확신 없을 때의 대안을 제시한다", () => {
+    // 값을 못 짚겠으면 갈리는 성질을 단언하라 — 막연한 금지보다 낫다.
+    expect(SYSTEM_PROMPT).toMatch(/갈리는 성질/);
+  });
+
+  it("죽이기 어려운 뮤턴트를 무리하지 말라고 한다", () => {
+    // 거대한 픽스처가 필요한 상한 검사에 재시도를 태우면 쿼터만 낭비된다.
+    expect(SYSTEM_PROMPT).toMatch(/죽이기 어렵다/);
   });
 });
 

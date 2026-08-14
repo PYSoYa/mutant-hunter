@@ -86,7 +86,7 @@ describe("renderReport", () => {
           attempts: [{ index: 0, gates: [] }],
         },
       ],
-      summary: { total: 1, accepted: 1, rejectedBy: {}, totalAttempts: 1 },
+      summary: { total: 1, accepted: 1, rejectedBy: {}, totalAttempts: 1, gateRejections: {}, rescuedByRetry: 0 },
     };
     const md = renderReport(result);
     expect(md).toContain("### 제안 1건");
@@ -112,6 +112,8 @@ describe("renderReport", () => {
         accepted: 0,
         rejectedBy: { "kills-mutant": 1 },
         totalAttempts: 1,
+        gateRejections: { "kills-mutant": 1 },
+        rescuedByRetry: 0,
       },
     });
     expect(md).toContain("제안할 테스트가 없습니다");

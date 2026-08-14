@@ -1,0 +1,107 @@
+{
+  "label": "mistral-prompt-v2",
+  "provider": "mistral",
+  "entries": [
+    {
+      "name": "self-week3-gates",
+      "status": "generated",
+      "durationMs": 100646,
+      "mutationScore": 28.508124076809455,
+      "totalMutants": 677,
+      "survived": 51,
+      "noCoverage": 433,
+      "candidates": 24,
+      "filtered": {
+        "no-coverage": 307,
+        "noise-string-literal": 153
+      },
+      "attempted": 8,
+      "accepted": 3,
+      "acceptRate": 37.5,
+      "llmCalls": 13,
+      "rejectedBy": {
+        "passes-on-original": 5
+      },
+      "gateRejections": {
+        "kills-mutant": 3,
+        "passes-on-original": 7
+      },
+      "rescuedByRetry": 0
+    },
+    {
+      "name": "self-week4-action",
+      "status": "generated",
+      "durationMs": 117078,
+      "mutationScore": 19.93006993006993,
+      "totalMutants": 572,
+      "survived": 72,
+      "noCoverage": 386,
+      "candidates": 20,
+      "filtered": {
+        "no-coverage": 266,
+        "noise-string-literal": 172
+      },
+      "attempted": 8,
+      "accepted": 3,
+      "acceptRate": 37.5,
+      "llmCalls": 13,
+      "rejectedBy": {
+        "kills-mutant": 3,
+        "passes-on-original": 2
+      },
+      "gateRejections": {
+        "kills-mutant": 6,
+        "passes-on-original": 4
+      },
+      "rescuedByRetry": 0
+    },
+    {
+      "name": "self-week2-scanner",
+      "status": "generated",
+      "durationMs": 131549,
+      "mutationScore": 47.14003944773176,
+      "totalMutants": 507,
+      "survived": 65,
+      "noCoverage": 203,
+      "candidates": 58,
+      "filtered": {
+        "no-coverage": 135,
+        "noise-string-literal": 75
+      },
+      "attempted": 8,
+      "accepted": 1,
+      "acceptRate": 12.5,
+      "llmCalls": 16,
+      "rejectedBy": {
+        "kills-mutant": 6,
+        "passes-on-original": 1
+      },
+      "gateRejections": {
+        "kills-mutant": 13,
+        "passes-on-original": 2
+      },
+      "rescuedByRetry": 1
+    }
+  ],
+  "aggregate": {
+    "entries": 3,
+    "totalMutants": 1756,
+    "totalCandidates": 102,
+    "weightedMutationScore": 31.09339407744875,
+    "totalDurationMs": 349273,
+    "attempted": 24,
+    "accepted": 7,
+    "acceptRate": 29.166666666666668,
+    "llmCalls": 42,
+    "rejectedBy": {
+      "passes-on-original": 8,
+      "kills-mutant": 9
+    },
+    "gateRejections": {
+      "kills-mutant": 22,
+      "passes-on-original": 13
+    },
+    "rescuedByRetry": 1,
+    "totalGateRejections": 35
+  }
+}
