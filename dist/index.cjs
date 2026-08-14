@@ -685,6 +685,7 @@ async function withMutantApplied(absPath, mutant, fn) {
 
 // src/runner.ts
 var import_node_child_process = require("node:child_process");
+var DEFAULT_TEST_TIMEOUT_MS = 3e5;
 function buildTestCommand(runner, opts = {}) {
   const args = ["--no-install", runner];
   if (runner === "vitest") args.push("run");
@@ -694,6 +695,7 @@ function buildTestCommand(runner, opts = {}) {
 }
 async function runTests(repoRoot, runner, opts = {}) {
   const { cmd, args } = buildTestCommand(runner, opts);
+  const limitMs = opts.timeoutMs ?? DEFAULT_TEST_TIMEOUT_MS;
   return new Promise((resolve) => {
     const child = (0, import_node_child_process.spawn)(cmd, args, {
       cwd: repoRoot,
@@ -701,14 +703,33 @@ async function runTests(repoRoot, runner, opts = {}) {
       env: { ...process.env, CI: "true", FORCE_COLOR: "0" }
     });
     let output = "";
+    let timedOut = false;
     const collect = (d) => {
       output += d.toString();
     };
     child.stdout.on("data", collect);
     child.stderr.on("data", collect);
+    const timer = setTimeout(() => {
+      timedOut = true;
+      child.kill("SIGTERM");
+      setTimeout(() => child.kill("SIGKILL"), 5e3).unref();
+    }, limitMs);
     child.on("close", (code) => {
+      clearTimeout(timer);
       const exitCode = code ?? 1;
-      resolve({ passed: exitCode === 0, exitCode, output });
+      resolve({
+        // 멈춘 실행은 통과가 아니다. 판정 불가는 실패로 다룬다.
+        passed: !timedOut && exitCode === 0,
+        exitCode,
+        output: timedOut ? `${output}
+[mutant-hunter] ${limitMs}ms \uCD08\uACFC\uB85C \uAC15\uC81C \uC885\uB8CC` : output,
+        timedOut
+      });
+    });
+    child.on("error", () => {
+      clearTimeout(timer);
+      resolve({ passed: false, exitCode: 1, output: `${output}
+[mutant-hunter] \uC2E4\uD589 \uC2E4\uD328`, timedOut });
     });
   });
 }
@@ -740,7 +761,7 @@ async function verifyGeneratedTest(opts) {
     gates.push({
       gate: "passes-on-original",
       ok: original.passed,
-      detail: original.passed ? "\uD1B5\uACFC" : tail(original.output)
+      detail: original.passed ? "\uD1B5\uACFC" : original.timedOut ? "\uC2E4\uD589\uC774 \uC0C1\uD55C\uC744 \uB118\uACA8 \uAC15\uC81C \uC885\uB8CC\uB428 (\uBA48\uCD94\uB294 \uD14C\uC2A4\uD2B8)" : tail(original.output)
     });
     if (!original.passed) return reject("passes-on-original");
     const mutated = await withMutantApplied(
@@ -748,11 +769,11 @@ async function verifyGeneratedTest(opts) {
       mutant,
       () => runTests(repoRoot, runner, { testFile: testFileRel, configFile })
     );
-    const killed = !mutated.passed;
+    const killed = !mutated.passed && !mutated.timedOut;
     gates.push({
       gate: "kills-mutant",
       ok: killed,
-      detail: killed ? "\uBBA4\uD134\uD2B8\uB97C \uC8FD\uC600\uB2E4" : "\uBBA4\uD134\uD2B8\uAC00 \uC0B4\uC544\uB0A8\uC558\uB2E4 \u2014 \uACB0\uD568\uC744 \uC7A1\uC9C0 \uBABB\uD558\uB294 \uD14C\uC2A4\uD2B8"
+      detail: killed ? "\uBBA4\uD134\uD2B8\uB97C \uC8FD\uC600\uB2E4" : mutated.timedOut ? "\uC2E4\uD589\uC774 \uC0C1\uD55C\uC744 \uB118\uACA8 \uAC15\uC81C \uC885\uB8CC\uB428 \u2014 \uC8FD\uC600\uB2E4\uACE0 \uBCFC \uC218 \uC5C6\uB2E4" : "\uBBA4\uD134\uD2B8\uAC00 \uC0B4\uC544\uB0A8\uC558\uB2E4 \u2014 \uACB0\uD568\uC744 \uC7A1\uC9C0 \uBABB\uD558\uB294 \uD14C\uC2A4\uD2B8"
     });
     if (!killed) return reject("kills-mutant");
     const repeats = Math.max(0, stabilityRuns - 1);
