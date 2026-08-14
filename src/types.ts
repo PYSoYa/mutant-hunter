@@ -24,6 +24,7 @@ export type Mutant = {
   line: number;
   column: number;
   endLine: number;
+  endColumn: number;
   /** 뮤턴트가 원본 코드를 대체한 내용 */
   replacement: string;
   /** 원본 소스에서 해당 위치의 코드 */

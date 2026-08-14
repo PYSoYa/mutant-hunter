@@ -2,6 +2,8 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 import { isMutableSource, parseUnifiedDiff } from "./diff.js";
+import { generateKillingTest, summarize, type GenerationResult } from "./generate.js";
+import { geminiFromEnv } from "./llm/gemini.js";
 import { mutantKey, scanReport } from "./mutants.js";
 import { detectTestRunner, ensureStryker, runStryker, WORK_DIR } from "./stryker.js";
 import { createProject, resolveMutateRanges, toStrykerMutateArgs } from "./targets.js";
@@ -14,6 +16,9 @@ type Args = {
   diffFile?: string;
   runnerConfig?: string;
   concurrency?: number;
+  generate: boolean;
+  maxMutants?: number;
+  maxAttempts?: number;
 };
 
 async function main(): Promise<void> {
@@ -95,7 +100,62 @@ async function main(): Promise<void> {
 
   const outPath = join(repoRoot, WORK_DIR, "candidates.json");
   writeFileSync(outPath, JSON.stringify(scan, null, 2));
-  console.log(`\n결과: ${outPath}`);
+  console.log(`\n후보: ${outPath}`);
+
+  if (!args.generate) {
+    console.log("테스트 생성을 하려면 --generate 를 붙이세요.");
+    return;
+  }
+
+  const provider = geminiFromEnv();
+  if (!provider) {
+    console.error("GEMINI_API_KEY 가 없어 생성 단계를 건너뜁니다.");
+    process.exitCode = 1;
+    return;
+  }
+
+  // 노이즈를 만들지 않기 위해 한 PR에서 다루는 뮤턴트 수를 제한한다.
+  // 코멘트가 5개를 넘으면 사람은 전부 무시한다.
+  const targets = scan.candidates.slice(0, args.maxMutants ?? 5);
+  if (targets.length < scan.candidates.length) {
+    console.log(
+      `\n후보 ${scan.candidates.length}개 중 상위 ${targets.length}개만 처리합니다.`,
+    );
+  }
+
+  console.log(`\n테스트 생성 시작 (provider=${provider.name})`);
+  const results: GenerationResult[] = [];
+
+  for (const mutant of targets) {
+    const r = await generateKillingTest(mutant, {
+      repoRoot,
+      runner: testRunner,
+      provider,
+      configFile: args.runnerConfig,
+      maxAttempts: args.maxAttempts ?? 2,
+    });
+    results.push(r);
+
+    const label = `[${mutant.mutatorName}] ${mutant.path}:${mutant.line}`;
+    if (r.accepted) {
+      console.log(`  ✅ ${label} — ${r.attempts.length}회 시도만에 채택`);
+    } else {
+      const why = r.error ?? r.attempts[r.attempts.length - 1]?.rejectedAt ?? "unknown";
+      console.log(`  ❌ ${label} — 폐기 (${why})`);
+    }
+  }
+
+  const s = summarize(results);
+  console.log(
+    `\n채택 ${s.accepted}/${s.total} (LLM 호출 ${s.totalAttempts}회)`,
+  );
+  for (const [reason, n] of Object.entries(s.rejectedBy)) {
+    console.log(`  폐기 ${reason}: ${n}개`);
+  }
+
+  const resultPath = join(repoRoot, WORK_DIR, "generated.json");
+  writeFileSync(resultPath, JSON.stringify({ results, summary: s }, null, 2));
+  console.log(`결과: ${resultPath}`);
 }
 
 function gitDiff(repoRoot: string, base: string, head: string): string {
@@ -130,16 +190,27 @@ function oneLine(s: string): string {
 
 function parseArgs(argv: string[]): Args {
   const out: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i += 2) {
+  const flags = new Set<string>();
+  const BOOLEAN_FLAGS = new Set(["generate"]);
+
+  for (let i = 0; i < argv.length; i++) {
     const key = argv[i];
+    if (!key?.startsWith("--")) continue;
+    const name = key.slice(2);
+    if (BOOLEAN_FLAGS.has(name)) {
+      flags.add(name);
+      continue;
+    }
     const val = argv[i + 1];
-    if (!key?.startsWith("--") || val === undefined) continue;
-    out[key.slice(2)] = val;
+    if (val === undefined) continue;
+    out[name] = val;
+    i++;
   }
   if (!out["repo"]) {
     throw new Error(
       "사용법: scan --repo <경로> [--base <ref> --head <ref> | --diff-file <경로>] " +
-        "[--runner-config <경로>] [--concurrency <n>]",
+        "[--runner-config <경로>] [--concurrency <n>] " +
+        "[--generate] [--max-mutants <n>] [--max-attempts <n>]",
     );
   }
   return {
@@ -149,6 +220,9 @@ function parseArgs(argv: string[]): Args {
     diffFile: out["diff-file"],
     runnerConfig: out["runner-config"],
     concurrency: out["concurrency"] ? Number(out["concurrency"]) : undefined,
+    generate: flags.has("generate"),
+    maxMutants: out["max-mutants"] ? Number(out["max-mutants"]) : undefined,
+    maxAttempts: out["max-attempts"] ? Number(out["max-attempts"]) : undefined,
   };
 }
 

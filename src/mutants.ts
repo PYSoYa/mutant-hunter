@@ -77,6 +77,7 @@ export function scanReport(
         line: raw.location.start.line,
         column: raw.location.start.column,
         endLine: raw.location.end.line,
+        endColumn: raw.location.end.column,
         replacement: raw.replacement ?? "",
         original: sliceSource(lines, raw.location),
       };
