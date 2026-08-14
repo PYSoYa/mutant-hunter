@@ -1,5 +1,5 @@
 import { LLMError, type GenerateRequest, type GenerateResponse, type LLMProvider } from "./provider.js";
-import { backoffMs } from "./gemini.js";
+import { parseRetryDelayMs, waitMs } from "./gemini.js";
 
 /**
  * OpenAI 호환 `/chat/completions` provider.
@@ -51,9 +51,10 @@ export class OpenAICompatProvider implements LLMProvider {
     };
 
     let lastError = "";
+    let hintedDelayMs: number | undefined;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      if (attempt > 0) await sleep(backoffMs(attempt));
+      if (attempt > 0) await sleep(waitMs(attempt, hintedDelayMs));
 
       const res = await fetch(`${this.opts.baseURL}/chat/completions`, {
         method: "POST",
@@ -75,7 +76,10 @@ export class OpenAICompatProvider implements LLMProvider {
         return { text, model: json.model ?? this.opts.model };
       }
 
-      lastError = `${res.status} ${await res.text().catch(() => "")}`.slice(0, 500);
+      const bodyText = await res.text().catch(() => "");
+      lastError = `${res.status} ${bodyText}`.slice(0, 500);
+      // 대부분의 OpenAI 호환 서비스는 Retry-After 헤더로 대기 시간을 알려준다.
+      hintedDelayMs = parseRetryDelayMs(bodyText, res.headers);
 
       // 429는 쿼터라 기다리면 풀린다. 나머지 4xx는 재시도해도 그대로다.
       if (res.status !== 429 && res.status < 500) {

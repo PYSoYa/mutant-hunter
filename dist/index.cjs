@@ -90,7 +90,7 @@ var LLMError = class extends Error {
 
 // src/llm/gemini.ts
 var ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
-var DEFAULT_MODEL = "gemini-2.0-flash";
+var DEFAULT_MODEL = "gemini-flash-latest";
 var GeminiProvider = class {
   constructor(opts) {
     this.opts = opts;
@@ -109,8 +109,9 @@ var GeminiProvider = class {
       generationConfig: { temperature: req.temperature ?? 0.2 }
     };
     let lastError = "";
+    let hintedDelayMs;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      if (attempt > 0) await sleep(backoffMs(attempt));
+      if (attempt > 0) await sleep(waitMs(attempt, hintedDelayMs));
       const res = await fetch(url, {
         method: "POST",
         headers: {
@@ -129,7 +130,9 @@ var GeminiProvider = class {
         }
         return { text, model: this.model };
       }
-      lastError = `${res.status} ${await res.text().catch(() => "")}`.slice(0, 500);
+      const bodyText = await res.text().catch(() => "");
+      lastError = `${res.status} ${bodyText}`.slice(0, 500);
+      hintedDelayMs = parseRetryDelayMs(bodyText, res.headers);
       if (res.status !== 429 && res.status < 500) {
         throw new LLMError(`Gemini \uD638\uCD9C \uC2E4\uD328: ${lastError}`, res.status);
       }
@@ -144,6 +147,30 @@ function geminiFromEnv(env = process.env) {
 }
 function backoffMs(attempt) {
   return Math.min(1e3 * 2 ** (attempt - 1), 8e3);
+}
+var MAX_RETRY_WAIT_MS = 65e3;
+function parseRetryDelayMs(bodyText, headers) {
+  const header = headers?.get("retry-after");
+  if (header) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(seconds * 1e3, MAX_RETRY_WAIT_MS);
+    }
+  }
+  const structured = /"retryDelay"\s*:\s*"([\d.]+)s"/.exec(bodyText);
+  if (structured?.[1]) {
+    return Math.min(Number(structured[1]) * 1e3, MAX_RETRY_WAIT_MS);
+  }
+  const prose = /retry in ([\d.]+)\s*s/i.exec(bodyText);
+  if (prose?.[1]) {
+    return Math.min(Number(prose[1]) * 1e3, MAX_RETRY_WAIT_MS);
+  }
+  return void 0;
+}
+function waitMs(attempt, hintedMs) {
+  const base = backoffMs(attempt);
+  if (hintedMs === void 0) return base;
+  return Math.min(Math.max(base, hintedMs + 500), MAX_RETRY_WAIT_MS);
 }
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -180,8 +207,9 @@ var OpenAICompatProvider = class {
       temperature: req.temperature ?? 0.2
     };
     let lastError = "";
+    let hintedDelayMs;
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      if (attempt > 0) await sleep2(backoffMs(attempt));
+      if (attempt > 0) await sleep2(waitMs(attempt, hintedDelayMs));
       const res = await fetch(`${this.opts.baseURL}/chat/completions`, {
         method: "POST",
         headers: {
@@ -200,7 +228,9 @@ var OpenAICompatProvider = class {
         }
         return { text, model: json.model ?? this.opts.model };
       }
-      lastError = `${res.status} ${await res.text().catch(() => "")}`.slice(0, 500);
+      const bodyText = await res.text().catch(() => "");
+      lastError = `${res.status} ${bodyText}`.slice(0, 500);
+      hintedDelayMs = parseRetryDelayMs(bodyText, res.headers);
       if (res.status !== 429 && res.status < 500) {
         throw new LLMError(`${this.name} \uD638\uCD9C \uC2E4\uD328: ${lastError}`, res.status);
       }

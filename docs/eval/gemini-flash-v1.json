@@ -1,0 +1,61 @@
+{
+  "label": "gemini-flash-v1",
+  "entries": [
+    {
+      "name": "jsonGuard-scanner",
+      "status": "generated",
+      "durationMs": 268148,
+      "mutationScore": 63.1578947368421,
+      "totalMutants": 57,
+      "survived": 17,
+      "noCoverage": 4,
+      "candidates": 12,
+      "filtered": {
+        "no-coverage": 4,
+        "noise-string-literal": 5
+      },
+      "attempted": 5,
+      "accepted": 3,
+      "acceptRate": 60,
+      "llmCalls": 4,
+      "rejectedBy": {
+        "llm-error": 2
+      }
+    },
+    {
+      "name": "self-dogfood",
+      "status": "generated",
+      "durationMs": 78753,
+      "mutationScore": 34.22459893048128,
+      "totalMutants": 561,
+      "survived": 135,
+      "noCoverage": 234,
+      "candidates": 90,
+      "filtered": {
+        "no-coverage": 129,
+        "noise-string-literal": 150
+      },
+      "attempted": 5,
+      "accepted": 2,
+      "acceptRate": 40,
+      "llmCalls": 2,
+      "rejectedBy": {
+        "llm-error": 3
+      }
+    }
+  ],
+  "aggregate": {
+    "entries": 2,
+    "totalMutants": 618,
+    "totalCandidates": 102,
+    "weightedMutationScore": 36.89320388349514,
+    "totalDurationMs": 346901,
+    "attempted": 10,
+    "accepted": 5,
+    "acceptRate": 50,
+    "llmCalls": 6,
+    "rejectedBy": {
+      "llm-error": 5
+    }
+  }
+}

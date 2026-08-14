@@ -43,9 +43,10 @@ export class GeminiProvider implements LLMProvider {
     };
 
     let lastError = "";
+    let hintedDelayMs: number | undefined;
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
-      if (attempt > 0) await sleep(backoffMs(attempt));
+      if (attempt > 0) await sleep(waitMs(attempt, hintedDelayMs));
 
       const res = await fetch(url, {
         method: "POST",
@@ -71,7 +72,9 @@ export class GeminiProvider implements LLMProvider {
         return { text, model: this.model };
       }
 
-      lastError = `${res.status} ${await res.text().catch(() => "")}`.slice(0, 500);
+      const bodyText = await res.text().catch(() => "");
+      lastError = `${res.status} ${bodyText}`.slice(0, 500);
+      hintedDelayMs = parseRetryDelayMs(bodyText, res.headers);
 
       // 4xx는 재시도해도 그대로다. 단, 429는 쿼터라 기다리면 풀린다.
       if (res.status !== 429 && res.status < 500) {
@@ -91,8 +94,56 @@ export function geminiFromEnv(env = process.env): GeminiProvider | undefined {
 }
 
 export function backoffMs(attempt: number): number {
-  // 1s, 2s, 4s … 무료 티어의 분당 제한을 넘기지 않을 만큼만 기다린다.
+  // 1s, 2s, 4s … 서버가 대기 시간을 알려주지 않을 때의 기본값.
   return Math.min(1000 * 2 ** (attempt - 1), 8000);
+}
+
+/** 서버가 요구한 대기 시간의 상한. 무한정 CI를 붙잡지 않는다. */
+export const MAX_RETRY_WAIT_MS = 65_000;
+
+/**
+ * 429 응답에서 서버가 알려준 대기 시간을 뽑는다.
+ *
+ * 실측에서 Gemini는 "Please retry in 9.4s"라고 정확히 알려주는데,
+ * 우리 지수 백오프 상한이 8초라 그 전에 포기해 5건을 통째로 날렸다.
+ * 서버가 답을 주는데 짐작으로 기다릴 이유가 없다.
+ */
+export function parseRetryDelayMs(
+  bodyText: string,
+  headers?: { get(name: string): string | null },
+): number | undefined {
+  const header = headers?.get("retry-after");
+  if (header) {
+    const seconds = Number(header);
+    if (Number.isFinite(seconds) && seconds >= 0) {
+      return Math.min(seconds * 1000, MAX_RETRY_WAIT_MS);
+    }
+  }
+
+  // google.rpc.RetryInfo — { "retryDelay": "9.4s" }
+  const structured = /"retryDelay"\s*:\s*"([\d.]+)s"/.exec(bodyText);
+  if (structured?.[1]) {
+    return Math.min(Number(structured[1]) * 1000, MAX_RETRY_WAIT_MS);
+  }
+
+  // 사람이 읽는 메시지에만 담겨 오는 경우도 있다.
+  const prose = /retry in ([\d.]+)\s*s/i.exec(bodyText);
+  if (prose?.[1]) {
+    return Math.min(Number(prose[1]) * 1000, MAX_RETRY_WAIT_MS);
+  }
+
+  return undefined;
+}
+
+/** 서버 힌트가 있으면 그걸 따르고, 없으면 지수 백오프. 항상 약간 더 기다린다. */
+export function waitMs(
+  attempt: number,
+  hintedMs: number | undefined,
+): number {
+  const base = backoffMs(attempt);
+  if (hintedMs === undefined) return base;
+  // 힌트 시각에 정확히 맞춰 쏘면 경계에서 다시 429가 난다.
+  return Math.min(Math.max(base, hintedMs + 500), MAX_RETRY_WAIT_MS);
 }
 
 function sleep(ms: number): Promise<void> {
