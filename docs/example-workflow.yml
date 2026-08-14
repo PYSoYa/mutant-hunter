@@ -1,0 +1,37 @@
+# 대상 repo의 .github/workflows/mutant-hunter.yml 에 넣을 예시.
+name: MutantHunter
+
+on:
+  pull_request:
+
+# PR에 코멘트를 달기 위한 최소 권한.
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # base...head diff를 계산하려면 전체 이력이 필요하다.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # 대상 repo의 테스트가 통과하는 상태여야 판정이 의미를 갖는다.
+      - run: npm ci
+
+      - uses: PYSoYa/mutant-hunter@main
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          # 무료 티어 중 아무거나. 아래는 Gemini 예시.
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          # DeepSeek/Groq/OpenRouter를 쓰려면 대신 이렇게:
+          #   MH_PROVIDER: groq
+          #   MH_API_KEY: ${{ secrets.MH_API_KEY }}
