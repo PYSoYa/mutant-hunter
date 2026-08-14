@@ -80,30 +80,78 @@ export function splitRepo(full: string): { owner: string; repo: string } | undef
   return { owner, repo };
 }
 
-export async function postPullRequestComment(opts: {
+export type CommentResult = {
+  ok: boolean;
+  status: number;
+  /** 새로 달았는가, 기존 것을 고쳤는가 */
+  action: "created" | "updated" | "failed";
+  detail?: string;
+};
+
+type UpsertOptions = {
   token: string;
   owner: string;
   repo: string;
   prNumber: number;
   body: string;
-}): Promise<{ ok: boolean; status: number; detail?: string }> {
-  const res = await fetch(
-    `https://api.github.com/repos/${opts.owner}/${opts.repo}/issues/${opts.prNumber}/comments`,
-    {
-      method: "POST",
-      headers: {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${opts.token}`,
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({ body: opts.body }),
-    },
-  );
+  /** 우리 코멘트를 식별하는 표식 */
+  marker: string;
+};
 
-  if (res.ok) return { ok: true, status: res.status };
+/**
+ * 우리 코멘트가 이미 있으면 고치고, 없으면 새로 단다.
+ *
+ * 커밋이 추가될 때마다 새 코멘트를 쌓으면 알림 피로로 도구가 죽는다.
+ * PR 하나당 코멘트 하나를 유지한다.
+ */
+export async function upsertPullRequestComment(
+  opts: UpsertOptions,
+): Promise<CommentResult> {
+  const existing = await findOwnComment(opts);
+
+  const url = existing
+    ? `https://api.github.com/repos/${opts.owner}/${opts.repo}/issues/comments/${existing}`
+    : `https://api.github.com/repos/${opts.owner}/${opts.repo}/issues/${opts.prNumber}/comments`;
+
+  const res = await fetch(url, {
+    method: existing ? "PATCH" : "POST",
+    headers: ghHeaders(opts.token),
+    body: JSON.stringify({ body: opts.body }),
+  });
+
+  if (res.ok) {
+    return { ok: true, status: res.status, action: existing ? "updated" : "created" };
+  }
   return {
     ok: false,
     status: res.status,
+    action: "failed",
     detail: (await res.text().catch(() => "")).slice(0, 500),
+  };
+}
+
+/** 표식이 든 우리 코멘트의 id. 없으면 undefined. */
+async function findOwnComment(opts: UpsertOptions): Promise<number | undefined> {
+  // 코멘트가 많은 PR에서도 우리 것은 대개 앞쪽에 있다. 한 페이지면 충분하다.
+  const res = await fetch(
+    `https://api.github.com/repos/${opts.owner}/${opts.repo}/issues/${opts.prNumber}/comments?per_page=100`,
+    { headers: ghHeaders(opts.token) },
+  );
+  if (!res.ok) return undefined;
+
+  try {
+    const comments = (await res.json()) as { id: number; body?: string }[];
+    return comments.find((c) => c.body?.includes(opts.marker))?.id;
+  } catch {
+    // 목록을 못 읽었다고 코멘트를 포기할 이유는 없다. 새로 단다.
+    return undefined;
+  }
+}
+
+function ghHeaders(token: string): Record<string, string> {
+  return {
+    accept: "application/vnd.github+json",
+    authorization: `Bearer ${token}`,
+    "content-type": "application/json",
   };
 }

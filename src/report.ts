@@ -1,19 +1,28 @@
+import { dedupeKey, explainMutant, oneLine } from "./explain.js";
+import type { GenerationResult } from "./generate.js";
 import { countBy } from "./pipeline.js";
 import type { PipelineResult } from "./pipeline.js";
 
-/** PR 코멘트와 job summary가 공유하는 마크다운. */
+/**
+ * 우리가 단 코멘트를 다시 찾기 위한 표식.
+ * 커밋이 추가될 때마다 새 코멘트를 달면 알림 피로로 도구가 죽는다.
+ */
+export const COMMENT_MARKER = "<!-- mutant-hunter -->";
+
+/** GitHub 코멘트 본문 상한(65536자)보다 넉넉히 아래에서 자른다. */
+const MAX_BODY = 60_000;
+
 export function renderReport(result: PipelineResult): string {
-  const lines: string[] = ["## 🧬 MutantHunter"];
+  const head = [COMMENT_MARKER, "## 🧬 MutantHunter", ""];
 
   switch (result.status) {
     case "no-changes":
-      return [...lines, "", "뮤테이션 대상 소스 변경이 없습니다."].join("\n");
+      return [...head, "뮤테이션 대상 소스 변경이 없습니다."].join("\n");
     case "no-ranges":
-      return [...lines, "", "변경된 줄을 감싸는 뮤테이션 범위를 찾지 못했습니다."].join("\n");
+      return [...head, "변경된 줄을 감싸는 뮤테이션 범위를 찾지 못했습니다."].join("\n");
     case "stryker-failed":
       return [
-        ...lines,
-        "",
+        ...head,
         "⚠️ 뮤테이션 실행에 실패했습니다.",
         "",
         "```",
@@ -25,65 +34,85 @@ export function renderReport(result: PipelineResult): string {
   }
 
   const scan = result.scan;
-  if (!scan) return [...lines, "", "결과가 없습니다."].join("\n");
+  if (!scan) return [...head, "결과가 없습니다."].join("\n");
 
-  const s = scan.stats;
-  lines.push(
-    "",
-    `**뮤테이션 스코어 ${s.mutationScore.toFixed(1)}%** ` +
-      `— 뮤턴트 ${s.total}개 중 ${s.killed}개를 기존 테스트가 잡았습니다.`,
-    "",
-    `| | |`,
-    `|---|---|`,
-    `| 검사한 범위 | ${result.ranges.length}개 |`,
-    `| 살아남은 뮤턴트 | ${s.survived}개 |`,
-    `| 커버리지 없음 | ${s.noCoverage}개 |`,
-    `| 제안 후보 | ${scan.candidates.length}개 |`,
-  );
-
-  // 무엇을 왜 버렸는지 항상 밝힌다. 조용한 절삭은 "다 훑었다"는 착시를 만든다.
-  const filtered = countBy(scan.filtered.map((f) => f.reason));
-  if (filtered.length > 0) {
-    lines.push(
-      "",
-      "<details><summary>필터로 제외한 뮤턴트</summary>",
-      "",
-      ...filtered.map(([reason, n]) => `- \`${reason}\`: ${n}개`),
-      "",
-      "</details>",
-    );
-  }
-
-  const accepted = (result.results ?? []).filter((r) => r.accepted);
+  const accepted = dedupe(result.results ?? []);
+  const lines = [...head, summaryLine(result, accepted.length), ""];
 
   if (result.status === "scanned") {
-    lines.push("", "테스트 생성은 실행하지 않았습니다.");
-    return lines.join("\n");
-  }
-
-  if (accepted.length === 0) {
+    lines.push("테스트 생성은 실행하지 않았습니다.", "");
+  } else if (accepted.length === 0) {
     lines.push(
-      "",
       "### 제안할 테스트가 없습니다",
       "",
-      "생성한 테스트가 모두 검증 게이트를 통과하지 못했습니다. " +
-        "증명하지 못한 것은 제안하지 않습니다.",
+      "생성한 테스트가 모두 검증을 통과하지 못했습니다.",
+      "**증명하지 못한 것은 제안하지 않습니다.**",
+      "",
     );
   } else {
-    lines.push("", `### 제안 ${accepted.length}건`, "");
-    for (const r of accepted) {
+    lines.push(...renderSuggestions(accepted));
+  }
+
+  lines.push(...renderAppendix(result, scan));
+
+  return cap(lines.join("\n"));
+}
+
+function summaryLine(result: PipelineResult, acceptedCount: number): string {
+  const scan = result.scan;
+  const gaps = scan?.candidates.length ?? 0;
+  const files = new Set(result.ranges.map((r) => r.path)).size;
+
+  const found =
+    `변경된 코드 ${files}개 파일에서 **테스트가 지키지 않는 지점 ${gaps}곳**을 찾았습니다.`;
+
+  if (result.status === "scanned") return found;
+  if (acceptedCount === 0) return found;
+
+  return `${found}\n\n그중 **${acceptedCount}곳**은 구멍을 막는 테스트를 만들어 ` +
+    `실제로 결함을 잡는지 확인했습니다.`;
+}
+
+/**
+ * 같은 줄의 같은 종류 뮤턴트는 사람 눈에 같은 지적이다.
+ * (한 줄에 옵셔널 체이닝이 셋이면 뮤턴트도 셋이 나온다)
+ */
+function dedupe(results: GenerationResult[]): GenerationResult[] {
+  const seen = new Set<string>();
+  const out: GenerationResult[] = [];
+  for (const r of results) {
+    if (!r.accepted) continue;
+    const key = dedupeKey(r.mutant);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+
+function renderSuggestions(accepted: GenerationResult[]): string[] {
+  const lines = ["### 제안", ""];
+
+  // 파일별로 묶어야 리뷰어가 한 파일씩 훑을 수 있다.
+  const byFile = new Map<string, GenerationResult[]>();
+  for (const r of accepted) {
+    const list = byFile.get(r.mutant.path) ?? [];
+    list.push(r);
+    byFile.set(r.mutant.path, list);
+  }
+
+  for (const [path, items] of byFile) {
+    lines.push(`#### \`${path}\``, "");
+    for (const r of items) {
       const m = r.mutant;
       lines.push(
-        `<details><summary><code>${m.path}:${m.line}</code> — ${m.mutatorName}</summary>`,
+        `**L${m.line}** — ${explainMutant(m)}`,
         "",
-        `이 코드를 아래처럼 바꿔도 **어떤 테스트도 실패하지 않습니다.**`,
-        "",
-        "```diff",
-        `- ${oneLine(m.original)}`,
-        `+ ${oneLine(m.replacement)}`,
+        "```ts",
+        oneLine(m.original, 200),
         "```",
         "",
-        `아래 테스트는 원본에서 통과하고 위 변형에서 실패하는 것을 확인했습니다.`,
+        `<details><summary>이 구멍을 막는 테스트 — ${lineCount(r.testSource)}줄 (검증 완료)</summary>`,
         "",
         `\`${r.testFileRel}\``,
         "",
@@ -97,24 +126,97 @@ export function renderReport(result: PipelineResult): string {
     }
   }
 
+  return lines;
+}
+
+function renderAppendix(
+  result: PipelineResult,
+  scan: NonNullable<PipelineResult["scan"]>,
+): string[] {
+  const s = scan.stats;
+  const lines = [
+    "---",
+    "",
+    "<details><summary>검증 요약</summary>",
+    "",
+    `변경 범위의 뮤테이션 스코어 **${s.mutationScore.toFixed(1)}%** ` +
+      `— 뮤턴트 ${s.total}개 중 ${s.killed}개를 기존 테스트가 잡았습니다.`,
+    "",
+  ];
+
   const summary = result.summary;
   if (summary) {
-    const rejected = Object.entries(summary.rejectedBy);
+    const gate = Object.entries(summary.gateRejections ?? {});
+    const total = gate.reduce((a, [, n]) => a + n, 0);
     lines.push(
+      `생성한 테스트 중 **${total}건**을 검증에서 걸러냈습니다.`,
+      "증명하지 못한 것은 제안하지 않습니다.",
       "",
-      `<sub>뮤턴트 ${summary.total}개에 대해 LLM 호출 ${summary.totalAttempts}회, ` +
-        `${summary.accepted}건 채택` +
-        (rejected.length
-          ? `, 폐기 ${rejected.map(([k, n]) => `${k} ${n}`).join(" / ")}`
-          : "") +
-        ".</sub>",
+    );
+    if (gate.length > 0) {
+      lines.push(
+        "| 검증 항목 | 폐기 |",
+        "|---|---|",
+        ...gate
+          .sort((x, y) => y[1] - x[1])
+          .map(([g, n]) => `| ${gateLabel(g)} | ${n} |`),
+        "",
+      );
+    }
+  }
+
+  // 무엇을 왜 뺐는지 항상 밝힌다. 조용한 절삭은 "다 훑었다"는 착시를 만든다.
+  const filtered = countBy(scan.filtered.map((f) => f.reason));
+  if (filtered.length > 0) {
+    lines.push(
+      "검사 대상에서 제외한 뮤턴트:",
+      "",
+      ...filtered.map(([reason, n]) => `- ${filterLabel(reason)}: ${n}개`),
+      "",
     );
   }
 
-  return lines.join("\n");
+  lines.push("</details>");
+  return lines;
 }
 
-function oneLine(s: string): string {
-  const flat = s.replace(/\s+/g, " ").trim();
-  return flat.length > 120 ? `${flat.slice(0, 120)}…` : flat;
+function gateLabel(gate: string): string {
+  switch (gate) {
+    case "passes-on-original":
+      return "현재 코드에서 통과하는가";
+    case "kills-mutant":
+      return "결함을 실제로 잡는가";
+    case "stable":
+      return "반복 실행해도 같은가";
+    case "suite-intact":
+      return "기존 테스트를 깨지 않는가";
+    default:
+      return gate;
+  }
+}
+
+function filterLabel(reason: string): string {
+  switch (reason) {
+    case "noise-string-literal":
+      return "문자열 상수 변형 (테스트로 고정하면 유해)";
+    case "suspected-equivalent":
+      return "동작이 같아 죽일 수 없는 변형";
+    case "no-coverage":
+      return "테스트가 아예 없는 지점 (별도 문제)";
+    default:
+      return reason;
+  }
+}
+
+function lineCount(source: string | undefined): number {
+  return source ? source.split("\n").length : 0;
+}
+
+/** 상한을 넘으면 자르되, 잘랐다는 사실을 반드시 남긴다. */
+function cap(body: string): string {
+  if (body.length <= MAX_BODY) return body;
+  const notice =
+    "\n\n---\n\n⚠️ 내용이 길어 일부를 생략했습니다. " +
+    "전체 결과는 워크플로우 실행의 job summary에 있습니다.";
+  return body.slice(0, MAX_BODY - notice.length) + notice;
 }

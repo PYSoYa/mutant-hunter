@@ -86,6 +86,17 @@ describe("SYSTEM_PROMPT", () => {
     expect(SYSTEM_PROMPT).toMatch(/갈리는 성질/);
   });
 
+  it("기존 테스트를 복사하지 말라고 명시한다", () => {
+    // 실측에서 기존 21개를 그대로 베끼고 1개만 더한 응답이 나왔다.
+    // 적용하면 같은 테스트가 두 번 돈다.
+    expect(SYSTEM_PROMPT).toMatch(/복사하지 마라/);
+  });
+
+  it("그래도 단독 실행되어야 한다고 덧붙인다", () => {
+    // 복사 금지만 말하면 import까지 빼먹어 게이트 1에서 떨어진다.
+    expect(SYSTEM_PROMPT).toMatch(/단독으로\s*\n?\s*실행되도록/);
+  });
+
   it("죽이기 어려운 뮤턴트를 무리하지 말라고 한다", () => {
     // 거대한 픽스처가 필요한 상한 검사에 재시도를 태우면 쿼터만 낭비된다.
     expect(SYSTEM_PROMPT).toMatch(/죽이기 어렵다/);

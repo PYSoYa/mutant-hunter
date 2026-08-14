@@ -3,7 +3,7 @@ import {
   getBooleanInput,
   getInput,
   getNumberInput,
-  postPullRequestComment,
+  upsertPullRequestComment,
   readPullRequestContext,
   setOutput,
   splitRepo,
@@ -11,7 +11,7 @@ import {
 } from "./github.js";
 import { providerFromEnv } from "./llm/index.js";
 import { runPipeline } from "./pipeline.js";
-import { renderReport } from "./report.js";
+import { COMMENT_MARKER, renderReport } from "./report.js";
 
 async function run(): Promise<void> {
   const env = process.env;
@@ -86,15 +86,18 @@ async function maybeComment(
   const repo = splitRepo(env["GITHUB_REPOSITORY"] ?? "");
   if (!repo) return;
 
-  const res = await postPullRequestComment({
+  const res = await upsertPullRequestComment({
     token,
     owner: repo.owner,
     repo: repo.repo,
     prNumber,
     body,
+    marker: COMMENT_MARKER,
   });
 
-  if (!res.ok) {
+  if (res.ok) {
+    console.log(res.action === "updated" ? "PR 코멘트 갱신" : "PR 코멘트 작성");
+  } else {
     // 코멘트 실패가 잡을 죽일 이유는 없다. 결과는 job summary에 이미 있다.
     console.log(`PR 코멘트 실패 (${res.status}): ${res.detail ?? ""}`);
   }

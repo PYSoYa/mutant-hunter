@@ -57,24 +57,42 @@ function splitRepo(full) {
   if (!owner || !repo) return void 0;
   return { owner, repo };
 }
-async function postPullRequestComment(opts) {
-  const res = await fetch(
-    `https://api.github.com/repos/${opts.owner}/${opts.repo}/issues/${opts.prNumber}/comments`,
-    {
-      method: "POST",
-      headers: {
-        accept: "application/vnd.github+json",
-        authorization: `Bearer ${opts.token}`,
-        "content-type": "application/json"
-      },
-      body: JSON.stringify({ body: opts.body })
-    }
-  );
-  if (res.ok) return { ok: true, status: res.status };
+async function upsertPullRequestComment(opts) {
+  const existing = await findOwnComment(opts);
+  const url = existing ? `https://api.github.com/repos/${opts.owner}/${opts.repo}/issues/comments/${existing}` : `https://api.github.com/repos/${opts.owner}/${opts.repo}/issues/${opts.prNumber}/comments`;
+  const res = await fetch(url, {
+    method: existing ? "PATCH" : "POST",
+    headers: ghHeaders(opts.token),
+    body: JSON.stringify({ body: opts.body })
+  });
+  if (res.ok) {
+    return { ok: true, status: res.status, action: existing ? "updated" : "created" };
+  }
   return {
     ok: false,
     status: res.status,
+    action: "failed",
     detail: (await res.text().catch(() => "")).slice(0, 500)
+  };
+}
+async function findOwnComment(opts) {
+  const res = await fetch(
+    `https://api.github.com/repos/${opts.owner}/${opts.repo}/issues/${opts.prNumber}/comments?per_page=100`,
+    { headers: ghHeaders(opts.token) }
+  );
+  if (!res.ok) return void 0;
+  try {
+    const comments = await res.json();
+    return comments.find((c) => c.body?.includes(opts.marker))?.id;
+  } catch {
+    return void 0;
+  }
+}
+function ghHeaders(token) {
+  return {
+    accept: "application/vnd.github+json",
+    authorization: `Bearer ${token}`,
+    "content-type": "application/json"
   };
 }
 
@@ -411,6 +429,10 @@ var SYSTEM_PROMPT = `\uB2F9\uC2E0\uC740 TypeScript/JavaScript \uD14C\uC2A4\uD2B8
 - \uC8FC\uC5B4\uC9C4 \uAE30\uC874 \uD14C\uC2A4\uD2B8 \uD30C\uC77C\uC758 import \uC2A4\uD0C0\uC77C, \uB7EC\uB108 API, \uBAA8\uD0B9 \uBC29\uC2DD\uC744 \uADF8\uB300\uB85C \uB530\uB978\uB2E4.
 - \uC2DC\uAC04\xB7\uB09C\uC218\xB7\uC2E4\uD589 \uC21C\uC11C\uC5D0 \uC758\uC874\uD558\uC9C0 \uC54A\uB294\uB2E4. \uBC18\uBCF5 \uC2E4\uD589\uD574\uB3C4 \uACB0\uACFC\uAC00 \uAC19\uC544\uC57C \uD55C\uB2E4.
 - \uC18C\uC2A4 \uCF54\uB4DC\uB97C \uC218\uC815\uD558\uB294 \uD14C\uC2A4\uD2B8\uB294 \uC4F0\uC9C0 \uC54A\uB294\uB2E4.
+- **\uAE30\uC874 \uD14C\uC2A4\uD2B8 \uD30C\uC77C\uC758 \uCF00\uC774\uC2A4\uB97C \uBCF5\uC0AC\uD558\uC9C0 \uB9C8\uB77C.** \uCC38\uACE0\uC6A9\uC73C\uB85C \uC900 \uAC83\uC774\uC9C0
+  \uC62E\uACA8 \uC801\uC73C\uB77C\uACE0 \uC900 \uAC83\uC774 \uC544\uB2C8\uB2E4. \uC0C8\uB85C \uCD94\uAC00\uD558\uB294 \uCF00\uC774\uC2A4\uB9CC \uB2F4\uB418, \uD30C\uC77C\uC774 \uB2E8\uB3C5\uC73C\uB85C
+  \uC2E4\uD589\uB418\uB3C4\uB85D \uD544\uC694\uD55C import\uC640 \uD5EC\uD37C\uB294 \uD3EC\uD568\uD558\uB77C. \uC2E4\uCE21\uC5D0\uC11C \uAE30\uC874 21\uAC1C\uB97C \uADF8\uB300\uB85C
+  \uBCA0\uB07C\uACE0 1\uAC1C\uB9CC \uB354\uD55C \uC751\uB2F5\uC774 \uB098\uC654\uB2E4 \u2014 \uC801\uC6A9\uD558\uBA74 \uAC19\uC740 \uD14C\uC2A4\uD2B8\uAC00 \uB450 \uBC88 \uB3C8\uB2E4.
 - \uAC70\uB300\uD55C \uD53D\uC2A4\uCC98\uAC00 \uC788\uC5B4\uC57C\uB9CC \uB3C4\uB2EC\uD558\uB294 \uBD84\uAE30\uB77C\uBA74(\uC608: \uC218\uCC9C \uAC1C \uD30C\uC77C\uC774 \uD544\uC694\uD55C
   \uC0C1\uD55C \uAC80\uC0AC) \uBB34\uB9AC\uD574\uC11C \uB9CC\uB4E4\uC9C0 \uB9D0\uACE0, \uADF8 \uBBA4\uD134\uD2B8\uB294 \uC8FD\uC774\uAE30 \uC5B4\uB835\uB2E4\uACE0 \uD310\uB2E8\uD558\uB77C.
 - \uAC01 \uD14C\uC2A4\uD2B8\uC5D0 \uBB34\uC5C7\uC744 \uACA8\uB0E5\uD558\uB294\uC9C0 \uD55C \uC904 \uC8FC\uC11D\uC744 \uB0A8\uAE34\uB2E4.`;
@@ -1173,18 +1195,73 @@ function tsconfigOf(repoRoot) {
   return (0, import_node_fs6.existsSync)(p) ? p : void 0;
 }
 
+// src/explain.ts
+function explainMutant(mutant) {
+  const what = describeChange(mutant);
+  return `${what} **\uC5B4\uB5A4 \uD14C\uC2A4\uD2B8\uB3C4 \uC2E4\uD328\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.**`;
+}
+function describeChange(mutant) {
+  const replacement = mutant.replacement.trim();
+  switch (mutant.mutatorName) {
+    case "ConditionalExpression":
+      if (replacement === "true") return "\uC774 \uC870\uAC74\uC774 **\uD56D\uC0C1 \uCC38**\uC774 \uB418\uC5B4\uB3C4";
+      if (replacement === "false") return "\uC774 \uC870\uAC74\uC774 **\uD56D\uC0C1 \uAC70\uC9D3**\uC774 \uB418\uC5B4\uB3C4";
+      return "\uC774 \uC870\uAC74\uC758 \uACB0\uACFC\uAC00 \uB4A4\uC9D1\uD600\uB3C4";
+    case "EqualityOperator":
+      return "\uBE44\uAD50 \uC5F0\uC0B0\uC790\uC758 **\uACBD\uACC4\uAC00 \uD55C \uCE78 \uBC00\uB824\uB3C4**(`<` \u2194 `<=` \uB4F1)";
+    case "LogicalOperator":
+      return "\uB17C\uB9AC \uC5F0\uC0B0\uC790\uAC00 \uBC14\uB00C\uC5B4\uB3C4(`&&` \u2194 `||`, `??` \uD3EC\uD568)";
+    case "ArithmeticOperator":
+      return "\uC0B0\uC220 \uC5F0\uC0B0\uC790\uAC00 \uBC14\uB00C\uC5B4\uB3C4(`+` \u2194 `-` \uB4F1)";
+    case "UpdateOperator":
+      return "\uC99D\uAC10 \uBC29\uD5A5\uC774 \uB4A4\uC9D1\uD600\uB3C4(`++` \u2194 `--`)";
+    case "UnaryOperator":
+      return "\uBD80\uD638\uAC00 \uB4A4\uC9D1\uD600\uB3C4(`-` \u2194 `+`)";
+    case "BooleanLiteral":
+      return "\uCC38/\uAC70\uC9D3 \uAC12\uC774 \uB4A4\uC9D1\uD600\uB3C4";
+    case "AssignmentOperator":
+      return "\uB300\uC785 \uC5F0\uC0B0\uC790\uAC00 \uBC14\uB00C\uC5B4\uB3C4";
+    case "BlockStatement":
+      return "\uC774 \uBE14\uB85D\uC758 **\uB0B4\uC6A9\uC774 \uD1B5\uC9F8\uB85C \uC0AC\uB77C\uC838\uB3C4**";
+    case "ArrowFunction":
+      return "\uC774 \uD568\uC218\uAC00 **\uC544\uBB34\uAC83\uB3C4 \uBC18\uD658\uD558\uC9C0 \uC54A\uC544\uB3C4**";
+    case "MethodExpression":
+      return "\uC774 \uBA54\uC11C\uB4DC \uD638\uCD9C\uC774 **\uC5C6\uC5B4\uC838\uB3C4**(\uC6D0\uBCF8 \uAC12\uC774 \uADF8\uB300\uB85C \uD758\uB7EC\uB3C4)";
+    case "OptionalChaining":
+      return "\uC635\uC154\uB110 \uCCB4\uC774\uB2DD\uC774 **\uC0AC\uB77C\uC838\uB3C4**(\uAC12\uC774 \uC5C6\uC744 \uB54C \uD130\uC9C0\uAC8C \uB418\uC5B4\uB3C4)";
+    case "ObjectLiteral":
+      return "\uC774 \uAC1D\uCCB4\uAC00 **\uBE48 \uAC1D\uCCB4\uAC00 \uB418\uC5B4\uB3C4**";
+    case "ArrayDeclaration":
+      return "\uC774 \uBC30\uC5F4\uC774 **\uBE44\uC5B4\uB3C4**";
+    case "StringLiteral":
+      return "\uC774 \uBB38\uC790\uC5F4\uC774 \uBC14\uB00C\uC5B4\uB3C4";
+    case "Regex":
+      return "\uC774 \uC815\uADDC\uC2DD\uC774 \uBC14\uB00C\uC5B4\uB3C4";
+    default:
+      return "\uC774 \uCF54\uB4DC\uAC00 \uC544\uB798\uCC98\uB7FC \uBC14\uB00C\uC5B4\uB3C4";
+  }
+}
+function dedupeKey(mutant) {
+  return `${mutant.path}:${mutant.line}:${mutant.mutatorName}`;
+}
+function oneLine(source, limit = 100) {
+  const flat = source.replace(/\s+/g, " ").trim();
+  return flat.length > limit ? `${flat.slice(0, limit)}\u2026` : flat;
+}
+
 // src/report.ts
+var COMMENT_MARKER = "<!-- mutant-hunter -->";
+var MAX_BODY = 6e4;
 function renderReport(result) {
-  const lines = ["## \u{1F9EC} MutantHunter"];
+  const head = [COMMENT_MARKER, "## \u{1F9EC} MutantHunter", ""];
   switch (result.status) {
     case "no-changes":
-      return [...lines, "", "\uBBA4\uD14C\uC774\uC158 \uB300\uC0C1 \uC18C\uC2A4 \uBCC0\uACBD\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."].join("\n");
+      return [...head, "\uBBA4\uD14C\uC774\uC158 \uB300\uC0C1 \uC18C\uC2A4 \uBCC0\uACBD\uC774 \uC5C6\uC2B5\uB2C8\uB2E4."].join("\n");
     case "no-ranges":
-      return [...lines, "", "\uBCC0\uACBD\uB41C \uC904\uC744 \uAC10\uC2F8\uB294 \uBBA4\uD14C\uC774\uC158 \uBC94\uC704\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."].join("\n");
+      return [...head, "\uBCC0\uACBD\uB41C \uC904\uC744 \uAC10\uC2F8\uB294 \uBBA4\uD14C\uC774\uC158 \uBC94\uC704\uB97C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4."].join("\n");
     case "stryker-failed":
       return [
-        ...lines,
-        "",
+        ...head,
         "\u26A0\uFE0F \uBBA4\uD14C\uC774\uC158 \uC2E4\uD589\uC5D0 \uC2E4\uD328\uD588\uC2B5\uB2C8\uB2E4.",
         "",
         "```",
@@ -1195,57 +1272,68 @@ function renderReport(result) {
       break;
   }
   const scan = result.scan;
-  if (!scan) return [...lines, "", "\uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4."].join("\n");
-  const s = scan.stats;
-  lines.push(
-    "",
-    `**\uBBA4\uD14C\uC774\uC158 \uC2A4\uCF54\uC5B4 ${s.mutationScore.toFixed(1)}%** \u2014 \uBBA4\uD134\uD2B8 ${s.total}\uAC1C \uC911 ${s.killed}\uAC1C\uB97C \uAE30\uC874 \uD14C\uC2A4\uD2B8\uAC00 \uC7A1\uC558\uC2B5\uB2C8\uB2E4.`,
-    "",
-    `| | |`,
-    `|---|---|`,
-    `| \uAC80\uC0AC\uD55C \uBC94\uC704 | ${result.ranges.length}\uAC1C |`,
-    `| \uC0B4\uC544\uB0A8\uC740 \uBBA4\uD134\uD2B8 | ${s.survived}\uAC1C |`,
-    `| \uCEE4\uBC84\uB9AC\uC9C0 \uC5C6\uC74C | ${s.noCoverage}\uAC1C |`,
-    `| \uC81C\uC548 \uD6C4\uBCF4 | ${scan.candidates.length}\uAC1C |`
-  );
-  const filtered = countBy(scan.filtered.map((f) => f.reason));
-  if (filtered.length > 0) {
-    lines.push(
-      "",
-      "<details><summary>\uD544\uD130\uB85C \uC81C\uC678\uD55C \uBBA4\uD134\uD2B8</summary>",
-      "",
-      ...filtered.map(([reason, n]) => `- \`${reason}\`: ${n}\uAC1C`),
-      "",
-      "</details>"
-    );
-  }
-  const accepted = (result.results ?? []).filter((r) => r.accepted);
+  if (!scan) return [...head, "\uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4."].join("\n");
+  const accepted = dedupe(result.results ?? []);
+  const lines = [...head, summaryLine(result, accepted.length), ""];
   if (result.status === "scanned") {
-    lines.push("", "\uD14C\uC2A4\uD2B8 \uC0DD\uC131\uC740 \uC2E4\uD589\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.");
-    return lines.join("\n");
-  }
-  if (accepted.length === 0) {
+    lines.push("\uD14C\uC2A4\uD2B8 \uC0DD\uC131\uC740 \uC2E4\uD589\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.", "");
+  } else if (accepted.length === 0) {
     lines.push(
-      "",
       "### \uC81C\uC548\uD560 \uD14C\uC2A4\uD2B8\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4",
       "",
-      "\uC0DD\uC131\uD55C \uD14C\uC2A4\uD2B8\uAC00 \uBAA8\uB450 \uAC80\uC99D \uAC8C\uC774\uD2B8\uB97C \uD1B5\uACFC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4. \uC99D\uBA85\uD558\uC9C0 \uBABB\uD55C \uAC83\uC740 \uC81C\uC548\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4."
+      "\uC0DD\uC131\uD55C \uD14C\uC2A4\uD2B8\uAC00 \uBAA8\uB450 \uAC80\uC99D\uC744 \uD1B5\uACFC\uD558\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.",
+      "**\uC99D\uBA85\uD558\uC9C0 \uBABB\uD55C \uAC83\uC740 \uC81C\uC548\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.**",
+      ""
     );
   } else {
-    lines.push("", `### \uC81C\uC548 ${accepted.length}\uAC74`, "");
-    for (const r of accepted) {
+    lines.push(...renderSuggestions(accepted));
+  }
+  lines.push(...renderAppendix(result, scan));
+  return cap(lines.join("\n"));
+}
+function summaryLine(result, acceptedCount) {
+  const scan = result.scan;
+  const gaps = scan?.candidates.length ?? 0;
+  const files = new Set(result.ranges.map((r) => r.path)).size;
+  const found = `\uBCC0\uACBD\uB41C \uCF54\uB4DC ${files}\uAC1C \uD30C\uC77C\uC5D0\uC11C **\uD14C\uC2A4\uD2B8\uAC00 \uC9C0\uD0A4\uC9C0 \uC54A\uB294 \uC9C0\uC810 ${gaps}\uACF3**\uC744 \uCC3E\uC558\uC2B5\uB2C8\uB2E4.`;
+  if (result.status === "scanned") return found;
+  if (acceptedCount === 0) return found;
+  return `${found}
+
+\uADF8\uC911 **${acceptedCount}\uACF3**\uC740 \uAD6C\uBA4D\uC744 \uB9C9\uB294 \uD14C\uC2A4\uD2B8\uB97C \uB9CC\uB4E4\uC5B4 \uC2E4\uC81C\uB85C \uACB0\uD568\uC744 \uC7A1\uB294\uC9C0 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4.`;
+}
+function dedupe(results) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  for (const r of results) {
+    if (!r.accepted) continue;
+    const key = dedupeKey(r.mutant);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(r);
+  }
+  return out;
+}
+function renderSuggestions(accepted) {
+  const lines = ["### \uC81C\uC548", ""];
+  const byFile = /* @__PURE__ */ new Map();
+  for (const r of accepted) {
+    const list = byFile.get(r.mutant.path) ?? [];
+    list.push(r);
+    byFile.set(r.mutant.path, list);
+  }
+  for (const [path, items] of byFile) {
+    lines.push(`#### \`${path}\``, "");
+    for (const r of items) {
       const m = r.mutant;
       lines.push(
-        `<details><summary><code>${m.path}:${m.line}</code> \u2014 ${m.mutatorName}</summary>`,
+        `**L${m.line}** \u2014 ${explainMutant(m)}`,
         "",
-        `\uC774 \uCF54\uB4DC\uB97C \uC544\uB798\uCC98\uB7FC \uBC14\uAFD4\uB3C4 **\uC5B4\uB5A4 \uD14C\uC2A4\uD2B8\uB3C4 \uC2E4\uD328\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.**`,
-        "",
-        "```diff",
-        `- ${oneLine(m.original)}`,
-        `+ ${oneLine(m.replacement)}`,
+        "```ts",
+        oneLine(m.original, 200),
         "```",
         "",
-        `\uC544\uB798 \uD14C\uC2A4\uD2B8\uB294 \uC6D0\uBCF8\uC5D0\uC11C \uD1B5\uACFC\uD558\uACE0 \uC704 \uBCC0\uD615\uC5D0\uC11C \uC2E4\uD328\uD558\uB294 \uAC83\uC744 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4.`,
+        `<details><summary>\uC774 \uAD6C\uBA4D\uC744 \uB9C9\uB294 \uD14C\uC2A4\uD2B8 \u2014 ${lineCount(r.testSource)}\uC904 (\uAC80\uC99D \uC644\uB8CC)</summary>`,
         "",
         `\`${r.testFileRel}\``,
         "",
@@ -1258,19 +1346,81 @@ function renderReport(result) {
       );
     }
   }
+  return lines;
+}
+function renderAppendix(result, scan) {
+  const s = scan.stats;
+  const lines = [
+    "---",
+    "",
+    "<details><summary>\uAC80\uC99D \uC694\uC57D</summary>",
+    "",
+    `\uBCC0\uACBD \uBC94\uC704\uC758 \uBBA4\uD14C\uC774\uC158 \uC2A4\uCF54\uC5B4 **${s.mutationScore.toFixed(1)}%** \u2014 \uBBA4\uD134\uD2B8 ${s.total}\uAC1C \uC911 ${s.killed}\uAC1C\uB97C \uAE30\uC874 \uD14C\uC2A4\uD2B8\uAC00 \uC7A1\uC558\uC2B5\uB2C8\uB2E4.`,
+    ""
+  ];
   const summary = result.summary;
   if (summary) {
-    const rejected = Object.entries(summary.rejectedBy);
+    const gate = Object.entries(summary.gateRejections ?? {});
+    const total = gate.reduce((a, [, n]) => a + n, 0);
     lines.push(
+      `\uC0DD\uC131\uD55C \uD14C\uC2A4\uD2B8 \uC911 **${total}\uAC74**\uC744 \uAC80\uC99D\uC5D0\uC11C \uAC78\uB7EC\uB0C8\uC2B5\uB2C8\uB2E4.`,
+      "\uC99D\uBA85\uD558\uC9C0 \uBABB\uD55C \uAC83\uC740 \uC81C\uC548\uD558\uC9C0 \uC54A\uC2B5\uB2C8\uB2E4.",
+      ""
+    );
+    if (gate.length > 0) {
+      lines.push(
+        "| \uAC80\uC99D \uD56D\uBAA9 | \uD3D0\uAE30 |",
+        "|---|---|",
+        ...gate.sort((x, y) => y[1] - x[1]).map(([g, n]) => `| ${gateLabel(g)} | ${n} |`),
+        ""
+      );
+    }
+  }
+  const filtered = countBy(scan.filtered.map((f) => f.reason));
+  if (filtered.length > 0) {
+    lines.push(
+      "\uAC80\uC0AC \uB300\uC0C1\uC5D0\uC11C \uC81C\uC678\uD55C \uBBA4\uD134\uD2B8:",
       "",
-      `<sub>\uBBA4\uD134\uD2B8 ${summary.total}\uAC1C\uC5D0 \uB300\uD574 LLM \uD638\uCD9C ${summary.totalAttempts}\uD68C, ${summary.accepted}\uAC74 \uCC44\uD0DD` + (rejected.length ? `, \uD3D0\uAE30 ${rejected.map(([k, n]) => `${k} ${n}`).join(" / ")}` : "") + ".</sub>"
+      ...filtered.map(([reason, n]) => `- ${filterLabel(reason)}: ${n}\uAC1C`),
+      ""
     );
   }
-  return lines.join("\n");
+  lines.push("</details>");
+  return lines;
 }
-function oneLine(s) {
-  const flat = s.replace(/\s+/g, " ").trim();
-  return flat.length > 120 ? `${flat.slice(0, 120)}\u2026` : flat;
+function gateLabel(gate) {
+  switch (gate) {
+    case "passes-on-original":
+      return "\uD604\uC7AC \uCF54\uB4DC\uC5D0\uC11C \uD1B5\uACFC\uD558\uB294\uAC00";
+    case "kills-mutant":
+      return "\uACB0\uD568\uC744 \uC2E4\uC81C\uB85C \uC7A1\uB294\uAC00";
+    case "stable":
+      return "\uBC18\uBCF5 \uC2E4\uD589\uD574\uB3C4 \uAC19\uC740\uAC00";
+    case "suite-intact":
+      return "\uAE30\uC874 \uD14C\uC2A4\uD2B8\uB97C \uAE68\uC9C0 \uC54A\uB294\uAC00";
+    default:
+      return gate;
+  }
+}
+function filterLabel(reason) {
+  switch (reason) {
+    case "noise-string-literal":
+      return "\uBB38\uC790\uC5F4 \uC0C1\uC218 \uBCC0\uD615 (\uD14C\uC2A4\uD2B8\uB85C \uACE0\uC815\uD558\uBA74 \uC720\uD574)";
+    case "suspected-equivalent":
+      return "\uB3D9\uC791\uC774 \uAC19\uC544 \uC8FD\uC77C \uC218 \uC5C6\uB294 \uBCC0\uD615";
+    case "no-coverage":
+      return "\uD14C\uC2A4\uD2B8\uAC00 \uC544\uC608 \uC5C6\uB294 \uC9C0\uC810 (\uBCC4\uB3C4 \uBB38\uC81C)";
+    default:
+      return reason;
+  }
+}
+function lineCount(source) {
+  return source ? source.split("\n").length : 0;
+}
+function cap(body) {
+  if (body.length <= MAX_BODY) return body;
+  const notice = "\n\n---\n\n\u26A0\uFE0F \uB0B4\uC6A9\uC774 \uAE38\uC5B4 \uC77C\uBD80\uB97C \uC0DD\uB7B5\uD588\uC2B5\uB2C8\uB2E4. \uC804\uCCB4 \uACB0\uACFC\uB294 \uC6CC\uD06C\uD50C\uB85C\uC6B0 \uC2E4\uD589\uC758 job summary\uC5D0 \uC788\uC2B5\uB2C8\uB2E4.";
+  return body.slice(0, MAX_BODY - notice.length) + notice;
 }
 
 // src/action.ts
@@ -1324,14 +1474,17 @@ async function maybeComment(body, status, env, prNumber) {
   if (status === "no-changes" || status === "no-ranges") return;
   const repo = splitRepo(env["GITHUB_REPOSITORY"] ?? "");
   if (!repo) return;
-  const res = await postPullRequestComment({
+  const res = await upsertPullRequestComment({
     token,
     owner: repo.owner,
     repo: repo.repo,
     prNumber,
-    body
+    body,
+    marker: COMMENT_MARKER
   });
-  if (!res.ok) {
+  if (res.ok) {
+    console.log(res.action === "updated" ? "PR \uCF54\uBA58\uD2B8 \uAC31\uC2E0" : "PR \uCF54\uBA58\uD2B8 \uC791\uC131");
+  } else {
     console.log(`PR \uCF54\uBA58\uD2B8 \uC2E4\uD328 (${res.status}): ${res.detail ?? ""}`);
   }
 }
