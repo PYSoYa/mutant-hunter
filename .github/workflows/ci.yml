@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+      # 번들이 소스와 어긋난 채 커밋되면 액션은 낡은 코드를 실행한다.
+      # 조용히 틀리는 대신 CI에서 시끄럽게 실패시킨다.
+      - name: dist가 최신인지 확인
+        run: |
+          npm run build:action
+          if ! git diff --quiet -- dist; then
+            echo "::error::dist/가 소스와 다릅니다. 'npm run build:action' 후 커밋하세요."
+            git diff --stat -- dist
+            exit 1
+          fi

@@ -1,0 +1,76 @@
+name: MutantHunter
+description: 테스트가 못 잡는 구멍을 찾아, 실행으로 증명된 테스트만 PR에 제안합니다
+author: PYSoYa
+
+branding:
+  icon: git-pull-request
+  color: purple
+
+inputs:
+  base:
+    description: 비교 기준 ref. 생략하면 pull_request 이벤트의 base SHA를 씁니다.
+    required: false
+  head:
+    description: 비교 대상 ref. 생략하면 pull_request 이벤트의 head SHA를 씁니다.
+    required: false
+  generate:
+    description: 테스트 생성까지 수행할지 여부. API 키가 없으면 스캔만 합니다.
+    required: false
+    default: "true"
+  github-token:
+    description: PR 코멘트를 달기 위한 토큰. 없으면 job summary에만 씁니다.
+    required: false
+  runner-config:
+    description: 뮤테이션 전용 테스트 설정 경로 (선택). 순수 최적화입니다.
+    required: false
+  max-mutants:
+    description: 한 번에 다룰 뮤턴트 수. 코멘트가 많아지면 사람은 전부 무시합니다.
+    required: false
+    default: "5"
+  max-attempts:
+    description: 뮤턴트당 재시도 상한. 등가 뮤턴트는 원리적으로 킬이 불가능합니다.
+    required: false
+    default: "2"
+  concurrency:
+    description: 뮤테이션 동시 실행 워커 수
+    required: false
+    default: "4"
+
+outputs:
+  status:
+    description: no-changes | no-ranges | stryker-failed | scanned | generated
+    value: ${{ steps.mutant-hunter.outputs.status }}
+  candidates:
+    description: 제안 후보가 된 생존 뮤턴트 수
+    value: ${{ steps.mutant-hunter.outputs.candidates }}
+  accepted:
+    description: 4개 게이트를 모두 통과해 제안된 테스트 수
+    value: ${{ steps.mutant-hunter.outputs.accepted }}
+  mutation-score:
+    description: 변경 범위의 뮤테이션 스코어 (%)
+    value: ${{ steps.mutant-hunter.outputs.mutation-score }}
+
+# node20 액션 대신 composite을 쓴다.
+# 유일한 프로덕션 의존성인 ts-morph가 TypeScript 컴파일러 전체를 끌고 와서
+# 번들이 13MB가 된다. 매 빌드마다 그만한 블롭을 커밋하면 repo가 망가진다.
+# ts-morph를 외부로 빼면 번들은 44KB이고, 런타임에 한 패키지만 설치하면 된다.
+runs:
+  using: composite
+  steps:
+    - name: MutantHunter 의존성 설치
+      shell: bash
+      run: npm ci --omit=dev --no-audit --no-fund --prefix "$GITHUB_ACTION_PATH"
+
+    - name: MutantHunter 실행
+      id: mutant-hunter
+      shell: bash
+      run: node "$GITHUB_ACTION_PATH/dist/index.cjs"
+      env:
+        INPUT_BASE: ${{ inputs.base }}
+        INPUT_HEAD: ${{ inputs.head }}
+        INPUT_GENERATE: ${{ inputs.generate }}
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_RUNNER_CONFIG: ${{ inputs.runner-config }}
+        INPUT_MAX_MUTANTS: ${{ inputs.max-mutants }}
+        INPUT_MAX_ATTEMPTS: ${{ inputs.max-attempts }}
+        INPUT_CONCURRENCY: ${{ inputs.concurrency }}

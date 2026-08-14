@@ -1,5 +1,7 @@
 node_modules/
 dist/
+# 액션 번들은 커밋해야 한다. 대상 repo가 이 파일을 실행한다.
+!dist/index.cjs
 reports/
 *.log
 

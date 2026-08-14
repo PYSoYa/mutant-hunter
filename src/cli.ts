@@ -1,13 +1,9 @@
 import { execFileSync } from "node:child_process";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { isMutableSource, parseUnifiedDiff } from "./diff.js";
-import { generateKillingTest, summarize, type GenerationResult } from "./generate.js";
 import { geminiFromEnv } from "./llm/gemini.js";
-import { mutantKey, scanReport } from "./mutants.js";
-import { detectTestRunner, ensureStryker, runStryker, WORK_DIR } from "./stryker.js";
-import { createProject, resolveMutateRanges, toStrykerMutateArgs } from "./targets.js";
-import type { MutateRange } from "./types.js";
+import { runPipeline } from "./pipeline.js";
+import { WORK_DIR } from "./stryker.js";
 
 type Args = {
   repo: string;
@@ -21,6 +17,11 @@ type Args = {
   maxAttempts?: number;
 };
 
+const USAGE =
+  "사용법: scan --repo <경로> [--base <ref> --head <ref> | --diff-file <경로>] " +
+  "[--runner-config <경로>] [--concurrency <n>] " +
+  "[--generate] [--max-mutants <n>] [--max-attempts <n>]";
+
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
   const repoRoot = resolve(args.repo);
@@ -29,133 +30,46 @@ async function main(): Promise<void> {
     ? readFileSync(resolvePath(args.diffFile), "utf8")
     : gitDiff(repoRoot, args.base ?? "HEAD~1", args.head ?? "HEAD");
 
-  const changed = parseUnifiedDiff(diff).filter((f) => isMutableSource(f.path));
-  if (changed.length === 0) {
-    console.log("뮤테이션 대상 소스 변경이 없습니다.");
-    return;
-  }
-
-  const project = createProject(tsconfigOf(repoRoot));
-  const ranges: MutateRange[] = [];
-  for (const file of changed) {
-    const abs = join(repoRoot, file.path);
-    if (!existsSync(abs)) continue;
-    ranges.push(...resolveMutateRanges(project, abs, file.path, file.changedLines));
-  }
-
-  if (ranges.length === 0) {
-    console.log("변경된 줄을 감싸는 뮤테이션 범위를 찾지 못했습니다.");
-    return;
-  }
-
-  const mutate = toStrykerMutateArgs(ranges);
-  console.log(`대상 범위 ${ranges.length}개:`);
-  for (const r of ranges) console.log(`  ${r.path}:${r.start}-${r.end}  (${r.symbol})`);
-
-  const testRunner = detectTestRunner(repoRoot);
-  const ensured = await ensureStryker(repoRoot, testRunner);
-  if (ensured.installed) {
-    console.log(`\nStryker 런타임 설치 (--no-save): ${ensured.packages.join(", ")}`);
-  }
-
-  const result = await runStryker({
-    repoRoot,
-    mutate,
-    testRunner,
-    runnerConfigFile: args.runnerConfig,
-    concurrency: args.concurrency,
-  });
-
-  if (!result.ok) {
-    console.error(`Stryker 실행 실패 (exit ${result.exitCode})`);
-    console.error(result.stderr.slice(-2000));
-    process.exitCode = 1;
-    return;
-  }
-
-  const scan = scanReport(result.report, {
-    suspectedEquivalents: loadEquivalents(repoRoot),
-  });
-
-  const { stats } = scan;
-  console.log(
-    `\n뮤테이션 스코어 ${stats.mutationScore.toFixed(2)}%  ` +
-      `(전체 ${stats.total} / 킬 ${stats.killed} / 생존 ${stats.survived} / ` +
-      `커버리지없음 ${stats.noCoverage} / 타임아웃 ${stats.timeout})`,
-  );
-  console.log(`후보 뮤턴트 ${scan.candidates.length}개`);
-
-  // 무엇을 왜 버렸는지 침묵하지 않는다. "다 훑었다"는 착시를 막는다.
-  const byReason = new Map<string, number>();
-  for (const f of scan.filtered) {
-    byReason.set(f.reason, (byReason.get(f.reason) ?? 0) + 1);
-  }
-  for (const [reason, n] of byReason) console.log(`  제외 ${reason}: ${n}개`);
-
-  for (const m of scan.candidates) {
-    console.log(`\n  [${m.mutatorName}] ${m.path}:${m.line}`);
-    console.log(`    원본: ${oneLine(m.original)}`);
-    console.log(`    변이: ${oneLine(m.replacement)}`);
-  }
-
-  const outPath = join(repoRoot, WORK_DIR, "candidates.json");
-  writeFileSync(outPath, JSON.stringify(scan, null, 2));
-  console.log(`\n후보: ${outPath}`);
-
-  if (!args.generate) {
-    console.log("테스트 생성을 하려면 --generate 를 붙이세요.");
-    return;
-  }
-
-  const provider = geminiFromEnv();
-  if (!provider) {
-    console.error("GEMINI_API_KEY 가 없어 생성 단계를 건너뜁니다.");
-    process.exitCode = 1;
-    return;
-  }
-
-  // 노이즈를 만들지 않기 위해 한 PR에서 다루는 뮤턴트 수를 제한한다.
-  // 코멘트가 5개를 넘으면 사람은 전부 무시한다.
-  const targets = scan.candidates.slice(0, args.maxMutants ?? 5);
-  if (targets.length < scan.candidates.length) {
-    console.log(
-      `\n후보 ${scan.candidates.length}개 중 상위 ${targets.length}개만 처리합니다.`,
-    );
-  }
-
-  console.log(`\n테스트 생성 시작 (provider=${provider.name})`);
-  const results: GenerationResult[] = [];
-
-  for (const mutant of targets) {
-    const r = await generateKillingTest(mutant, {
-      repoRoot,
-      runner: testRunner,
-      provider,
-      configFile: args.runnerConfig,
-      maxAttempts: args.maxAttempts ?? 2,
-    });
-    results.push(r);
-
-    const label = `[${mutant.mutatorName}] ${mutant.path}:${mutant.line}`;
-    if (r.accepted) {
-      console.log(`  ✅ ${label} — ${r.attempts.length}회 시도만에 채택`);
-    } else {
-      const why = r.error ?? r.attempts[r.attempts.length - 1]?.rejectedAt ?? "unknown";
-      console.log(`  ❌ ${label} — 폐기 (${why})`);
+  let provider;
+  if (args.generate) {
+    provider = geminiFromEnv();
+    if (!provider) {
+      console.error("GEMINI_API_KEY 가 없어 생성 단계를 건너뜁니다.");
+      process.exitCode = 1;
+      return;
     }
   }
 
-  const s = summarize(results);
-  console.log(
-    `\n채택 ${s.accepted}/${s.total} (LLM 호출 ${s.totalAttempts}회)`,
-  );
-  for (const [reason, n] of Object.entries(s.rejectedBy)) {
-    console.log(`  폐기 ${reason}: ${n}개`);
+  const result = await runPipeline({
+    repoRoot,
+    diff,
+    provider,
+    runnerConfig: args.runnerConfig,
+    concurrency: args.concurrency,
+    maxMutants: args.maxMutants,
+    maxAttempts: args.maxAttempts,
+    log: (m) => console.log(m),
+  });
+
+  switch (result.status) {
+    case "no-changes":
+      console.log("뮤테이션 대상 소스 변경이 없습니다.");
+      return;
+    case "no-ranges":
+      console.log("변경된 줄을 감싸는 뮤테이션 범위를 찾지 못했습니다.");
+      return;
+    case "stryker-failed":
+      console.error(result.error);
+      process.exitCode = 1;
+      return;
+    default:
+      break;
   }
 
-  const resultPath = join(repoRoot, WORK_DIR, "generated.json");
-  writeFileSync(resultPath, JSON.stringify({ results, summary: s }, null, 2));
-  console.log(`결과: ${resultPath}`);
+  console.log(`\n결과: ${join(repoRoot, WORK_DIR)}`);
+  if (result.status === "scanned") {
+    console.log("테스트 생성을 하려면 --generate 를 붙이세요.");
+  }
 }
 
 function gitDiff(repoRoot: string, base: string, head: string): string {
@@ -166,29 +80,11 @@ function gitDiff(repoRoot: string, base: string, head: string): string {
   );
 }
 
-/** 등가 뮤턴트 의심 목록. 없으면 빈 집합. */
-function loadEquivalents(repoRoot: string): Set<string> {
-  const path = join(repoRoot, WORK_DIR, "equivalents.json");
-  if (!existsSync(path)) return new Set();
-  const raw = JSON.parse(readFileSync(path, "utf8")) as unknown;
-  return new Set(Array.isArray(raw) ? (raw as string[]) : []);
-}
-
-function tsconfigOf(repoRoot: string): string | undefined {
-  const p = join(repoRoot, "tsconfig.json");
-  return existsSync(p) ? p : undefined;
-}
-
 function resolvePath(p: string): string {
   return isAbsolute(p) ? p : resolve(process.cwd(), p);
 }
 
-function oneLine(s: string): string {
-  const flat = s.replace(/\s+/g, " ").trim();
-  return flat.length > 100 ? `${flat.slice(0, 100)}…` : flat;
-}
-
-function parseArgs(argv: string[]): Args {
+export function parseArgs(argv: string[]): Args {
   const out: Record<string, string> = {};
   const flags = new Set<string>();
   const BOOLEAN_FLAGS = new Set(["generate"]);
@@ -206,13 +102,9 @@ function parseArgs(argv: string[]): Args {
     out[name] = val;
     i++;
   }
-  if (!out["repo"]) {
-    throw new Error(
-      "사용법: scan --repo <경로> [--base <ref> --head <ref> | --diff-file <경로>] " +
-        "[--runner-config <경로>] [--concurrency <n>] " +
-        "[--generate] [--max-mutants <n>] [--max-attempts <n>]",
-    );
-  }
+
+  if (!out["repo"]) throw new Error(USAGE);
+
   return {
     repo: out["repo"],
     base: out["base"],
@@ -230,5 +122,3 @@ main().catch((err: unknown) => {
   console.error(err instanceof Error ? err.message : err);
   process.exitCode = 1;
 });
-
-export { mutantKey };
