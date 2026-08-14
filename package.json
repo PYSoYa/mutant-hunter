@@ -10,7 +10,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "scan": "tsx src/cli.ts",
-    "build:action": "esbuild src/action.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.js --external:ts-morph --legal-comments=none"
+    "build:action": "esbuild src/action.ts --bundle --platform=node --target=node20 --format=cjs --outfile=dist/index.cjs --external:ts-morph --legal-comments=none"
   },
   "dependencies": {
     "ts-morph": "^27.0.0"

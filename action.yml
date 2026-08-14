@@ -64,7 +64,7 @@ runs:
     - name: MutantHunter 실행
       id: mutant-hunter
       shell: bash
-      run: node "$GITHUB_ACTION_PATH/dist/index.js"
+      run: node "$GITHUB_ACTION_PATH/dist/index.cjs"
       env:
         INPUT_BASE: ${{ inputs.base }}
         INPUT_HEAD: ${{ inputs.head }}
