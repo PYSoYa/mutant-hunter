@@ -117,10 +117,20 @@ MutantHunter는 그 목록을 테스트 생성의 명세로 쓴다.**
 
 ```yaml
 # .github/workflows/mutant-hunter.yml
-- uses: yunseokpark/mutant-hunter@v1
+- uses: actions/checkout@v4
   with:
-    base: ${{ github.event.pull_request.base.sha }}
+    fetch-depth: 0        # base...head diff 계산에 전체 이력이 필요하다
+- uses: actions/setup-node@v4
+  with: { node-version: 20 }
+- run: npm ci
+- uses: PYSoYa/mutant-hunter@main
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+  env:
+    GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
 ```
+
+전체 예시는 [docs/example-workflow.yml](docs/example-workflow.yml).
 
 | 대상 repo에 커밋되는 것 | |
 |---|---|
@@ -231,19 +241,41 @@ Stryker 런타임 설치 (--no-save): @stryker-mutator/core, @stryker-mutator/vi
 대상 repo에는 `.mutant-hunter/` 작업 디렉터리만 생기고 기존 설정은 건드리지 않는다.
 `.gitignore`에 추가해 두면 깔끔하다.
 
+## LLM provider
+
+무료 티어를 주는 곳이 시기마다 바뀌므로 코드가 아니라 환경변수로 고른다.
+
+```bash
+# Gemini (Google AI Studio 무료 티어)
+GEMINI_API_KEY=...            # GEMINI_MODEL 로 모델 변경 가능
+
+# OpenAI 호환 API — DeepSeek / Groq / OpenRouter
+MH_PROVIDER=groq              # deepseek | groq | openrouter
+MH_API_KEY=...
+MH_MODEL=...                  # 선택, 프리셋 기본값 대체
+MH_BASE_URL=...               # 선택, 프리셋 없이 직접 지정
+```
+
+`MH_API_KEY`가 있으면 그쪽을 우선한다. 명시적으로 지정한 쪽이 이겨야
+"왜 Gemini가 불렸지" 같은 혼란이 없다.
+
 ## 개발
 
 ```bash
-npm test          # 자체 테스트
-npm run typecheck # 타입 검사
+npm test              # 자체 테스트
+npm run typecheck     # 타입 검사
+npm run build:action  # 액션 번들 (dist/index.cjs)
 ```
+
+`dist/index.cjs`는 커밋한다 — 대상 repo가 이 파일을 직접 실행한다.
+CI가 번들과 소스의 어긋남을 검사하므로, 소스를 고쳤으면 다시 빌드해 커밋해야 한다.
 
 ## 로드맵
 
 - [x] 1주차 — 기술 스파이크 (GO 판정: 킬 레이트 88%)
 - [x] 2주차 — 결정론적 파이프라인 골격
 - [x] 3주차 — LLM 생성·검증 루프 (4개 게이트)
-- [ ] 4주차 — GitHub Action 패키징
+- [x] 4주차 — GitHub Action 패키징
 - [ ] 5주차 — 평가 하네스 + 골든 코퍼스
 - [ ] 6주차 — 무료 티어 모델 실측 및 프롬프트 개선
 - [ ] 7주차 — PR 코멘트 UX
