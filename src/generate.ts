@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { cacheKey, type GenerationCache } from "./cache.js";
 import type { LLMProvider } from "./llm/provider.js";
 import {
   buildUserPrompt,
@@ -44,6 +45,13 @@ export type GenerateOptions = {
   configFile?: string;
   stabilityRuns?: number;
   runFullSuite?: boolean;
+  /**
+   * 생성 결과 캐시.
+   *
+   * 비싼 것(LLM)만 캐시하고 검증은 항상 다시 돌린다. 게이트 실행은
+   * 로컬이라 싸고, 소스가 바뀌면 판정도 달라져야 한다.
+   */
+  cache?: GenerationCache;
 };
 
 /**
@@ -79,22 +87,44 @@ export async function generateKillingTest(
   let previousFailure: { gate: string; detail: string } | undefined;
 
   for (let i = 0; i < maxAttempts; i++) {
+    const userPrompt = buildUserPrompt({
+      mutant,
+      sourceSnippet: snippet,
+      siblingTest,
+      previousFailure,
+    });
+    const key = opts.cache
+      ? cacheKey({
+          mutant,
+          prompt: `${SYSTEM_PROMPT}\n${userPrompt}`,
+          model: provider.name,
+          attempt: i,
+        })
+      : undefined;
+
     let testSource: string;
-    try {
-      const res = await provider.generate({
-        system: SYSTEM_PROMPT,
-        user: buildUserPrompt({ mutant, sourceSnippet: snippet, siblingTest, previousFailure }),
-        // 첫 시도는 결정론적으로, 재시도는 다른 접근을 유도한다.
-        temperature: i === 0 ? 0.1 : 0.6,
-      });
-      testSource = extractTestSource(res.text);
-    } catch (err) {
-      return {
-        mutant,
-        accepted: false,
-        attempts,
-        error: err instanceof Error ? err.message : String(err),
-      };
+    const cached = key ? opts.cache?.get(key) : undefined;
+
+    if (cached !== undefined) {
+      testSource = cached;
+    } else {
+      try {
+        const res = await provider.generate({
+          system: SYSTEM_PROMPT,
+          user: userPrompt,
+          // 첫 시도는 결정론적으로, 재시도는 다른 접근을 유도한다.
+          temperature: i === 0 ? 0.1 : 0.6,
+        });
+        testSource = extractTestSource(res.text);
+      } catch (err) {
+        return {
+          mutant,
+          accepted: false,
+          attempts,
+          error: err instanceof Error ? err.message : String(err),
+        };
+      }
+      if (key && testSource) opts.cache?.set(key, testSource);
     }
 
     if (!testSource) {
@@ -147,6 +177,15 @@ export type Summary = {
   gateRejections: Record<string, number>;
   /** 게이트에 한 번 걸렸다가 재시도로 살아난 수 */
   rescuedByRetry: number;
+  /**
+   * 캐시로 대체된 생성 횟수.
+   *
+   * totalAttempts는 생성 **시도** 수이지 API 호출 수가 아니다. 캐시가
+   * 켜지면 둘이 갈라지므로, 실제 API 부담은 totalAttempts - cacheHits 다.
+   * 이걸 구분하지 않으면 "LLM 호출 8회"라고 보고하면서 실제로는
+   * 0회인 상황이 된다.
+   */
+  cacheHits: number;
 };
 
 /** 폐기 사유 집계. "생성한 것의 몇 %를 스스로 버렸는가"를 숫자로 남긴다. */
@@ -182,5 +221,6 @@ export function summarize(results: GenerationResult[]): Summary {
     totalAttempts,
     gateRejections,
     rescuedByRetry,
+    cacheHits: 0,
   };
 }

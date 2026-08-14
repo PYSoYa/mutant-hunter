@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { FileCache, openCache } from "./cache.js";
 import { isMutableSource, parseUnifiedDiff } from "./diff.js";
 import { generateKillingTest, summarize, type GenerationResult } from "./generate.js";
 import type { LLMProvider } from "./llm/provider.js";
@@ -18,6 +19,13 @@ export type PipelineOptions = {
   /** 한 번에 다룰 뮤턴트 수. 코멘트가 5개를 넘으면 사람은 전부 무시한다. */
   maxMutants?: number;
   maxAttempts?: number;
+  /**
+   * 생성 결과 캐시 사용 여부 (기본 true).
+   *
+   * 잡음 폭 측정처럼 독립 표본이 필요할 때는 꺼야 한다.
+   * 캐시가 켜져 있으면 같은 조건이 항상 같은 결과를 내므로 흔들림이 0이 된다.
+   */
+  cache?: boolean;
   log?: (message: string) => void;
 };
 
@@ -110,7 +118,11 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
     log(`후보 ${scan.candidates.length}개 중 상위 ${targets.length}개만 처리합니다.`);
   }
 
-  log(`테스트 생성 시작 (provider=${provider.name})`);
+  const cache = openCache(repoRoot, WORK_DIR, opts.cache !== false);
+  log(
+    `테스트 생성 시작 (provider=${provider.name}` +
+      `${opts.cache === false ? ", 캐시 없음" : ""})`,
+  );
   const results: GenerationResult[] = [];
 
   for (const mutant of targets) {
@@ -120,6 +132,7 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
       provider,
       configFile: opts.runnerConfig,
       maxAttempts: opts.maxAttempts ?? 2,
+      cache,
     });
     results.push(r);
 
@@ -132,8 +145,15 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
     }
   }
 
-  const summary = summarize(results);
-  log(`채택 ${summary.accepted}/${summary.total} (LLM 호출 ${summary.totalAttempts}회)`);
+  if (cache instanceof FileCache) cache.flush();
+
+  const summary = { ...summarize(results), cacheHits: cache.hits };
+  const apiCalls = summary.totalAttempts - summary.cacheHits;
+  log(
+    `채택 ${summary.accepted}/${summary.total} ` +
+      `(생성 시도 ${summary.totalAttempts}회, API 호출 ${apiCalls}회` +
+      `${summary.cacheHits > 0 ? `, 캐시 적중 ${summary.cacheHits}회` : ""})`,
+  );
   for (const [reason, n] of Object.entries(summary.rejectedBy)) {
     log(`  폐기 ${reason}: ${n}개`);
   }

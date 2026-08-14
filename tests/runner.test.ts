@@ -2,7 +2,11 @@ import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { buildTestCommand } from "../src/runner.js";
+import {
+  buildTestCommand,
+  DEFAULT_TEST_TIMEOUT_MS,
+  runTests,
+} from "../src/runner.js";
 import {
   findSiblingTest,
   generatedTestPath,
@@ -98,5 +102,22 @@ describe("findSiblingTest / generatedTestPath", () => {
     removeGeneratedTest(root, rel);
     // 없는 파일을 다시 지워도 실패하지 않아야 한다 (finally에서 두 번 불릴 수 있다).
     expect(() => removeGeneratedTest(root, rel)).not.toThrow();
+  });
+});
+
+describe("실행 상한", () => {
+  it("기본 상한이 있다", () => {
+    // LLM 요청에는 타임아웃을 걸어두고 여기는 비워뒀다가, 평가 실행이
+    // 한 표본에서 4시간 45분 멈췄다. 다른 표본은 3~12분이었다.
+    expect(DEFAULT_TEST_TIMEOUT_MS).toBeGreaterThan(0);
+    expect(DEFAULT_TEST_TIMEOUT_MS).toBeLessThanOrEqual(600_000);
+  });
+
+  it("멈춘 실행은 통과로 치지 않는다", async () => {
+    const out = await runTests(process.cwd(), "vitest", {
+      testFile: "tests/절대없는파일.test.ts",
+      timeoutMs: 50,
+    });
+    expect(out.passed).toBe(false);
   });
 });

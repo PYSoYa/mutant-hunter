@@ -82,7 +82,11 @@ export async function verifyGeneratedTest(
     gates.push({
       gate: "passes-on-original",
       ok: original.passed,
-      detail: original.passed ? "통과" : tail(original.output),
+      detail: original.passed
+        ? "통과"
+        : original.timedOut
+          ? "실행이 상한을 넘겨 강제 종료됨 (멈추는 테스트)"
+          : tail(original.output),
     });
     if (!original.passed) return reject("passes-on-original");
 
@@ -94,13 +98,17 @@ export async function verifyGeneratedTest(
       mutant,
       () => runTests(repoRoot, runner, { testFile: testFileRel, configFile }),
     );
-    const killed = !mutated.passed;
+    // 멈춘 실행을 "실패했으니 뮤턴트를 죽였다"로 읽으면 안 된다.
+    // 판정 불가는 폐기다.
+    const killed = !mutated.passed && !mutated.timedOut;
     gates.push({
       gate: "kills-mutant",
       ok: killed,
       detail: killed
         ? "뮤턴트를 죽였다"
-        : "뮤턴트가 살아남았다 — 결함을 잡지 못하는 테스트",
+        : mutated.timedOut
+          ? "실행이 상한을 넘겨 강제 종료됨 — 죽였다고 볼 수 없다"
+          : "뮤턴트가 살아남았다 — 결함을 잡지 못하는 테스트",
     });
     if (!killed) return reject("kills-mutant");
 
