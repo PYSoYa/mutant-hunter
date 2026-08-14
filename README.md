@@ -18,6 +18,28 @@ PR diff → 변경된 코드에 뮤테이션 주입
 핵심 설계는 문제를 바꾼 데 있다. *"이 diff의 테스트를 써줘"*(정답 없음, 검증 불가) 대신
 *"이 뮤턴트를 죽이는 테스트를 써줘"*(정답 명확, 실행으로 검증 가능)로 바꾼다.
 
+## 30초 배경 — 뮤테이션 테스팅
+
+커버리지는 "그 줄이 **실행됐는가**"만 본다. "그 줄이 틀렸을 때 **누가 알아채는가**"는 묻지 않는다.
+뮤테이션 테스팅은 코드를 일부러 망가뜨려서 그 질문에 답한다.
+
+```ts
+// 원본
+if (score > 90) return "high";
+
+// 뮤턴트: 조건을 뒤집는다
+if (false) return "high";
+```
+
+테스트를 다시 돌린다.
+
+- **하나라도 실패했다** → 뮤턴트가 *죽었다*. 테스트가 이 코드를 지키고 있다. ✅
+- **전부 통과했다** → 뮤턴트가 *살아남았다*. 이 줄은 틀려도 아무도 모른다. ⚠️
+
+커버리지 100%여도 뮤테이션 스코어가 50%인 경우는 흔하다. 줄을 실행만 하고
+결과를 단언하지 않는 테스트가 그렇다. **살아남은 뮤턴트가 곧 진짜 테스트 갭이고,
+MutantHunter는 그 목록을 테스트 생성의 명세로 쓴다.**
+
 ## 왜 이 게이트가 필요한가 — 스파이크가 스스로 증명한 사례
 
 1주차 스파이크에서 `tryParse`의 오류 반환을 겨냥한 테스트를 작성했다. 단언을
@@ -104,22 +126,55 @@ npx가 **레지스트리에서 조용히 내려받고 있었기 때문**이다. 
 
 ## 사용법
 
+### 요구사항
+
+| | |
+|---|---|
+| Node.js | 20 이상 |
+| 대상 언어 | TypeScript / JavaScript |
+| 대상 테스트 러너 | vitest 또는 jest (`package.json`에서 자동 감지) |
+| 대상 repo 상태 | 테스트가 **전부 통과하는** 상태여야 한다 |
+
+마지막 조건이 중요하다. 이미 깨진 테스트가 있으면 "뮤턴트 때문에 실패한 것"과
+"원래 실패하던 것"을 구분할 수 없어 판정이 무의미해진다.
+
+### 설치
+
 ```bash
+git clone https://github.com/PYSoYa/mutant-hunter.git
+cd mutant-hunter
 npm install
-
-# PR diff 기준
-npx tsx src/cli.ts --repo /path/to/target --base main --head HEAD
-
-# 저장된 diff 파일 기준
-npx tsx src/cli.ts --repo /path/to/target --diff-file changes.diff \
-  --runner-config vitest.mutation.config.ts
 ```
 
-출력 예:
+### 실행
+
+```bash
+# PR diff 기준 — base와 head 사이의 변경만 대상으로 삼는다
+npm run scan -- --repo /path/to/target --base main --head HEAD
+
+# 저장된 diff 파일 기준
+npm run scan -- --repo /path/to/target --diff-file changes.diff
+```
+
+| 옵션 | 필수 | 설명 |
+|---|---|---|
+| `--repo <경로>` | ✅ | 스캔할 대상 repo 루트 |
+| `--base <ref>` | | 비교 기준 (기본값 `HEAD~1`) |
+| `--head <ref>` | | 비교 대상 (기본값 `HEAD`) |
+| `--diff-file <경로>` | | diff를 파일에서 읽는다. 지정 시 `--base`/`--head` 무시 |
+| `--runner-config <경로>` | | 뮤테이션 전용 테스트 설정. 대상 repo 기준 상대 경로 |
+| `--concurrency <n>` | | 동시 실행 워커 수 (기본값 4) |
+
+`--runner-config`는 전체 스위트 대신 빠른 부분집합만 돌리기 위한 것이다.
+지정하지 않으면 대상 repo의 기본 테스트 설정을 쓴다. 자동 생성은 3주차 과제.
+
+### 출력
 
 ```
 대상 범위 1개:
   lib/llm/jsonGuard.ts:15-60  (extractJson)
+
+Stryker 런타임 설치 (--no-save): @stryker-mutator/core, @stryker-mutator/vitest-runner
 
 뮤테이션 스코어 63.16%  (전체 57 / 킬 35 / 생존 17 / 커버리지없음 4 / 타임아웃 1)
 후보 뮤턴트 12개
@@ -131,7 +186,18 @@ npx tsx src/cli.ts --repo /path/to/target --diff-file changes.diff \
     변이: false
 ```
 
+`후보 뮤턴트` 각각이 "이 코드를 이렇게 바꿔도 아무 테스트도 실패하지 않는다"는 뜻이다.
+전체 결과는 대상 repo의 `.mutant-hunter/candidates.json`에 쓴다.
+
 대상 repo에는 `.mutant-hunter/` 작업 디렉터리만 생기고 기존 설정은 건드리지 않는다.
+`.gitignore`에 추가해 두면 깔끔하다.
+
+## 개발
+
+```bash
+npm test          # 자체 테스트
+npm run typecheck # 타입 검사
+```
 
 ## 로드맵
 
