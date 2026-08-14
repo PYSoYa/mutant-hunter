@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { cacheKey, type GenerationCache } from "./cache.js";
 import { describeExports } from "./exports.js";
 import { classifyFailure, type FailureKind } from "./failure.js";
+import { buildImportRequirement, detectRunnerImport } from "./imports.js";
 import type { LLMProvider } from "./llm/provider.js";
 import {
   buildUserPrompt,
@@ -94,12 +95,21 @@ export async function generateKillingTest(
   const attempts: Attempt[] = [];
   let previousFailure: { gate: string; detail: string } | undefined;
 
+  // 경로와 러너 import는 우리가 결정론적으로 안다. 추측시키지 않는다.
+  const importRequirement = buildImportRequirement({
+    testFileRel: generatedTestPath(repoRoot, mutant.path, `${mutant.id}-0`, sibling),
+    sourceRel: mutant.path,
+    siblingContent: siblingTest?.content,
+    fallbackRunnerImport: detectRunnerImport(repoRoot),
+  });
+
   for (let i = 0; i < maxAttempts; i++) {
     const userPrompt = buildUserPrompt({
       mutant,
       sourceSnippet: snippet,
       siblingTest,
       moduleExports,
+      importRequirement,
       previousFailure,
     });
     const key = opts.cache

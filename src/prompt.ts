@@ -50,6 +50,8 @@ export type PromptContext = {
   siblingTest?: { path: string; content: string };
   /** 대상 모듈이 실제로 내보내는 것들. 없는 API를 지어내지 않게 한다. */
   moduleExports?: string;
+  /** 계산된 import 요구사항. 추측시키지 않는다. */
+  importRequirement?: string;
   /** 이전 시도가 어느 게이트에서 왜 떨어졌는지 */
   previousFailure?: { gate: string; detail: string };
 };
@@ -74,6 +76,10 @@ export function buildUserPrompt(ctx: PromptContext): string {
       "\n```",
     `## 뮤턴트를 감싸는 코드\n\`\`\`ts\n${sourceSnippet}\n\`\`\``,
   ];
+
+  if (ctx.importRequirement) {
+    parts.push(`## import 규칙 (반드시 지킬 것)\n${ctx.importRequirement}`);
+  }
 
   if (ctx.moduleExports) {
     parts.push(

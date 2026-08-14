@@ -32,7 +32,11 @@ export function findSiblingTest(
       continue;
     }
 
-    const score = occurrences(content, stem);
+    // 파일명이 같으면 강한 신호다. destr의 test/index.test.ts는 소스를
+    // `from "../src"`로 import해서 "index"라는 문자열이 하나도 없었고,
+    // 내용 일치만 보다가 형제를 못 찾았다.
+    const sameName = basename(rel).replace(/\.(test|spec)\.[cm]?[jt]sx?$/, "") === stem;
+    const score = occurrences(content, stem) + (sameName ? 1000 : 0);
     if (score === 0) continue;
     if (!best || score > best.score) best = { path: rel, score };
   }
@@ -75,7 +79,7 @@ export function removeGeneratedTest(repoRoot: string, relPath: string): void {
   rmSync(join(repoRoot, relPath), { force: true });
 }
 
-function* walkFiles(root: string): Generator<string> {
+export function* walkFiles(root: string): Generator<string> {
   let entries: string[];
   try {
     entries = readdirSync(root, { recursive: true }) as string[];

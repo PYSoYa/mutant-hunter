@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
-import { geminiFromEnv } from "./llm/gemini.js";
+import { providerFromEnv } from "./llm/index.js";
 import { runPipeline } from "./pipeline.js";
 import { WORK_DIR } from "./stryker.js";
 
@@ -33,9 +33,13 @@ async function main(): Promise<void> {
 
   let provider;
   if (args.generate) {
-    provider = geminiFromEnv();
+    // Action과 같은 팩토리를 쓴다. 진입점마다 provider 선택이 다르면
+    // "로컬은 되는데 CI는 안 되는" 차이가 자란다.
+    provider = providerFromEnv();
     if (!provider) {
-      console.error("GEMINI_API_KEY 가 없어 생성 단계를 건너뜁니다.");
+      console.error(
+        "API 키가 없어 생성 단계를 건너뜁니다 (MH_API_KEY 또는 GEMINI_API_KEY).",
+      );
       process.exitCode = 1;
       return;
     }
