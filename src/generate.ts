@@ -130,18 +130,45 @@ export async function generateKillingTest(
   return { mutant, accepted: false, attempts };
 }
 
-/** 폐기 사유 집계. "생성한 것의 몇 %를 스스로 버렸는가"를 숫자로 남긴다. */
-export function summarize(results: GenerationResult[]): {
+export type Summary = {
   total: number;
   accepted: number;
+  /** 최종 결과 기준 폐기 사유. 뮤턴트 단위. */
   rejectedBy: Record<string, number>;
   totalAttempts: number;
-} {
+  /**
+   * **모든 시도** 기준으로 게이트가 떨어뜨린 횟수.
+   *
+   * rejectedBy는 마지막 시도만 센다. 1차에서 게이트에 걸렸다가 2차에
+   * 통과하면 "게이트가 걸러냈다"는 사실이 사라진다 — 안전망 크기를
+   * 재려는 목적에 정확히 반대다. 이 숫자가 곧 "증명 못 한 것을 얼마나
+   * 버렸는가"이고 이 프로젝트의 존재 이유다.
+   */
+  gateRejections: Record<string, number>;
+  /** 게이트에 한 번 걸렸다가 재시도로 살아난 수 */
+  rescuedByRetry: number;
+};
+
+/** 폐기 사유 집계. "생성한 것의 몇 %를 스스로 버렸는가"를 숫자로 남긴다. */
+export function summarize(results: GenerationResult[]): Summary {
   const rejectedBy: Record<string, number> = {};
+  const gateRejections: Record<string, number> = {};
   let totalAttempts = 0;
+  let rescuedByRetry = 0;
 
   for (const r of results) {
     totalAttempts += r.attempts.length;
+
+    // 모든 시도를 훑어 게이트가 떨어뜨린 것을 빠짐없이 센다.
+    let hitGate = false;
+    for (const attempt of r.attempts) {
+      if (!attempt.rejectedAt) continue;
+      hitGate = true;
+      gateRejections[attempt.rejectedAt] =
+        (gateRejections[attempt.rejectedAt] ?? 0) + 1;
+    }
+    if (hitGate && r.accepted) rescuedByRetry++;
+
     if (r.accepted) continue;
     const last = r.attempts[r.attempts.length - 1];
     const key = r.error ? "llm-error" : (last?.rejectedAt ?? "unknown");
@@ -153,5 +180,7 @@ export function summarize(results: GenerationResult[]): {
     accepted: results.filter((r) => r.accepted).length,
     rejectedBy,
     totalAttempts,
+    gateRejections,
+    rescuedByRetry,
   };
 }

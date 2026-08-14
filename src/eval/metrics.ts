@@ -20,6 +20,9 @@ export type EntryMetrics = {
   acceptRate?: number;
   llmCalls?: number;
   rejectedBy?: Record<string, number>;
+  /** 모든 시도 기준 게이트 폐기 — 안전망의 크기 */
+  gateRejections?: Record<string, number>;
+  rescuedByRetry?: number;
 };
 
 export function computeMetrics(
@@ -55,6 +58,8 @@ export function computeMetrics(
     acceptRate: summary.total === 0 ? 0 : (summary.accepted / summary.total) * 100,
     llmCalls: summary.totalAttempts,
     rejectedBy: summary.rejectedBy,
+    gateRejections: summary.gateRejections,
+    rescuedByRetry: summary.rescuedByRetry,
   };
 }
 
@@ -70,6 +75,10 @@ export type Aggregate = {
   acceptRate?: number;
   llmCalls?: number;
   rejectedBy?: Record<string, number>;
+  gateRejections?: Record<string, number>;
+  rescuedByRetry?: number;
+  /** 게이트가 떨어뜨린 총 횟수 */
+  totalGateRejections?: number;
 };
 
 /**
@@ -88,7 +97,9 @@ export function aggregate(entries: EntryMetrics[]): Aggregate {
   let accepted = 0;
   let llmCalls = 0;
   let sawGeneration = false;
+  let rescuedByRetry = 0;
   const rejectedBy: Record<string, number> = {};
+  const gateRejections: Record<string, number> = {};
 
   for (const e of entries) {
     totalMutants += e.totalMutants;
@@ -101,8 +112,12 @@ export function aggregate(entries: EntryMetrics[]): Aggregate {
       attempted += e.attempted;
       accepted += e.accepted ?? 0;
       llmCalls += e.llmCalls ?? 0;
+      rescuedByRetry += e.rescuedByRetry ?? 0;
       for (const [k, n] of Object.entries(e.rejectedBy ?? {})) {
         rejectedBy[k] = (rejectedBy[k] ?? 0) + n;
+      }
+      for (const [k, n] of Object.entries(e.gateRejections ?? {})) {
+        gateRejections[k] = (gateRejections[k] ?? 0) + n;
       }
     }
   }
@@ -124,6 +139,9 @@ export function aggregate(entries: EntryMetrics[]): Aggregate {
     acceptRate: attempted === 0 ? 0 : (accepted / attempted) * 100,
     llmCalls,
     rejectedBy,
+    gateRejections,
+    rescuedByRetry,
+    totalGateRejections: Object.values(gateRejections).reduce((a, b) => a + b, 0),
   };
 }
 

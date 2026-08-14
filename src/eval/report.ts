@@ -26,13 +26,33 @@ export function renderEvalReport(run: EvalRun, comparison?: Comparison): string 
     lines.push("", "> 생성 단계를 실행하지 않았습니다 (API 키 없음).");
   }
 
+  const gateRejected = Object.entries(a.gateRejections ?? {});
+  if (gateRejected.length > 0) {
+    const total = a.totalGateRejections ?? 0;
+    lines.push(
+      "",
+      "## 게이트가 걸러낸 것",
+      "",
+      `생성된 테스트 중 **${total}건**이 게이트를 통과하지 못했다. ` +
+        `그중 ${a.rescuedByRetry ?? 0}건은 재시도로 살아났다.`,
+      "",
+      "이 숫자가 안전망의 크기다. 증명하지 못한 것은 제안하지 않는다.",
+      "",
+      "| 게이트 | 폐기 |",
+      "|---|---|",
+      ...gateRejected
+        .sort((x, y) => y[1] - x[1])
+        .map(([reason, n]) => `| \`${reason}\` | ${n} |`),
+    );
+  }
+
   const rejected = Object.entries(a.rejectedBy ?? {});
   if (rejected.length > 0) {
     lines.push(
       "",
-      "## 폐기 사유",
+      "## 최종 폐기 사유",
       "",
-      "게이트가 무엇을 얼마나 걸러냈는지. 이 숫자가 곧 안전망의 크기다.",
+      "재시도까지 실패해 제안하지 못한 뮤턴트.",
       "",
       "| 사유 | 건수 |",
       "|---|---|",
