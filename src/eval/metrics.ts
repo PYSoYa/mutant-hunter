@@ -18,7 +18,11 @@ export type EntryMetrics = {
   accepted?: number;
   /** 시도한 뮤턴트 중 게이트를 모두 통과한 비율 (%) */
   acceptRate?: number;
+  /** 생성 시도 수. 캐시 적중을 포함하므로 API 부담이 아니다. */
   llmCalls?: number;
+  /** 실제 API 호출 수 = 시도 - 캐시 적중 */
+  apiCalls?: number;
+  cacheHits?: number;
   rejectedBy?: Record<string, number>;
   /** 모든 시도 기준 게이트 폐기 — 안전망의 크기 */
   gateRejections?: Record<string, number>;
@@ -57,6 +61,8 @@ export function computeMetrics(
     accepted: summary.accepted,
     acceptRate: summary.total === 0 ? 0 : (summary.accepted / summary.total) * 100,
     llmCalls: summary.totalAttempts,
+    cacheHits: summary.cacheHits ?? 0,
+    apiCalls: summary.totalAttempts - (summary.cacheHits ?? 0),
     rejectedBy: summary.rejectedBy,
     gateRejections: summary.gateRejections,
     rescuedByRetry: summary.rescuedByRetry,
@@ -74,6 +80,8 @@ export type Aggregate = {
   accepted?: number;
   acceptRate?: number;
   llmCalls?: number;
+  apiCalls?: number;
+  cacheHits?: number;
   rejectedBy?: Record<string, number>;
   gateRejections?: Record<string, number>;
   rescuedByRetry?: number;
@@ -96,6 +104,8 @@ export function aggregate(entries: EntryMetrics[]): Aggregate {
   let attempted = 0;
   let accepted = 0;
   let llmCalls = 0;
+  let apiCalls = 0;
+  let cacheHits = 0;
   let sawGeneration = false;
   let rescuedByRetry = 0;
   const rejectedBy: Record<string, number> = {};
@@ -112,6 +122,8 @@ export function aggregate(entries: EntryMetrics[]): Aggregate {
       attempted += e.attempted;
       accepted += e.accepted ?? 0;
       llmCalls += e.llmCalls ?? 0;
+      apiCalls += e.apiCalls ?? 0;
+      cacheHits += e.cacheHits ?? 0;
       rescuedByRetry += e.rescuedByRetry ?? 0;
       for (const [k, n] of Object.entries(e.rejectedBy ?? {})) {
         rejectedBy[k] = (rejectedBy[k] ?? 0) + n;
@@ -138,6 +150,8 @@ export function aggregate(entries: EntryMetrics[]): Aggregate {
     accepted,
     acceptRate: attempted === 0 ? 0 : (accepted / attempted) * 100,
     llmCalls,
+    apiCalls,
+    cacheHits,
     rejectedBy,
     gateRejections,
     rescuedByRetry,

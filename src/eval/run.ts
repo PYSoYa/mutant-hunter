@@ -14,6 +14,8 @@ export type RunEvalOptions = {
   provider?: LLMProvider;
   maxMutants?: number;
   maxAttempts?: number;
+  /** 생성 결과 캐시 사용 여부. 반복 측정에서는 꺼야 한다. */
+  cache?: boolean;
   /** 실행 라벨. 하네스는 시계를 직접 읽지 않는다. */
   label: string;
   log?: (message: string) => void;
@@ -53,6 +55,7 @@ export async function runEval(
       runnerConfig: entry.runnerConfig,
       maxMutants: opts.maxMutants,
       maxAttempts: opts.maxAttempts,
+      cache: opts.cache,
       log: (m) => log(`  ${m}`),
     });
 

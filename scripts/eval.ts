@@ -51,6 +51,8 @@ for (let i = 0; i < repeat; i++) {
       label: runLabel,
       maxMutants: args["max-mutants"] ? Number(args["max-mutants"]) : undefined,
       maxAttempts: args["max-attempts"] ? Number(args["max-attempts"]) : undefined,
+      // 반복 측정은 독립 표본이어야 한다. 캐시가 켜지면 흔들림이 0이 된다.
+      cache: !("no-cache" in args) && repeat === 1,
       log: (m) => console.log(m),
     }),
   );
@@ -99,7 +101,7 @@ function resolvePath(p: string): string {
 
 function parseArgs(argv: string[]): Record<string, string> {
   const out: Record<string, string> = {};
-  const BOOLEAN = new Set(["generate"]);
+  const BOOLEAN = new Set(["generate", "no-cache"]);
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i];
     if (!key?.startsWith("--")) continue;

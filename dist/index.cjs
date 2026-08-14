@@ -343,8 +343,92 @@ function providerFromEnv(env = process.env) {
 }
 
 // src/pipeline.ts
-var import_node_fs6 = require("node:fs");
-var import_node_path5 = require("node:path");
+var import_node_fs7 = require("node:fs");
+var import_node_path6 = require("node:path");
+
+// src/cache.ts
+var import_node_crypto = require("node:crypto");
+var import_node_fs2 = require("node:fs");
+var import_node_path = require("node:path");
+function cacheKey(input) {
+  const { mutant: m } = input;
+  const parts = [
+    m.path,
+    m.line,
+    m.column,
+    m.endLine,
+    m.endColumn,
+    m.mutatorName,
+    m.replacement,
+    // 원본 코드가 바뀌었으면 같은 위치라도 다른 뮤턴트다.
+    m.original,
+    input.model,
+    input.attempt,
+    input.prompt
+  ];
+  return (0, import_node_crypto.createHash)("sha256").update(parts.join("\0")).digest("hex");
+}
+var NullCache = class {
+  hits = 0;
+  misses = 0;
+  get() {
+    this.misses++;
+    return void 0;
+  }
+  set() {
+  }
+};
+var FileCache = class {
+  constructor(path) {
+    this.path = path;
+    this.entries = readEntries(path);
+  }
+  path;
+  entries;
+  dirty = false;
+  hits = 0;
+  misses = 0;
+  get(key) {
+    const hit = this.entries[key];
+    if (hit === void 0) this.misses++;
+    else this.hits++;
+    return hit;
+  }
+  set(key, testSource) {
+    this.entries[key] = testSource;
+    this.dirty = true;
+  }
+  /** 호출자가 명시적으로 저장한다. 매 항목마다 디스크를 때리지 않는다. */
+  flush() {
+    if (!this.dirty) return;
+    (0, import_node_fs2.mkdirSync)(dirOf(this.path), { recursive: true });
+    (0, import_node_fs2.writeFileSync)(this.path, JSON.stringify(this.entries, null, 0));
+    this.dirty = false;
+  }
+  get size() {
+    return Object.keys(this.entries).length;
+  }
+};
+function openCache(repoRoot, workDir, enabled) {
+  return enabled ? new FileCache((0, import_node_path.join)(repoRoot, workDir, "generation-cache.json")) : new NullCache();
+}
+function readEntries(path) {
+  if (!(0, import_node_fs2.existsSync)(path)) return {};
+  try {
+    const parsed = JSON.parse((0, import_node_fs2.readFileSync)(path, "utf8"));
+    return isStringRecord(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+function isStringRecord(v) {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  return Object.values(v).every((x) => typeof x === "string");
+}
+function dirOf(path) {
+  const i = path.lastIndexOf("/");
+  return i === -1 ? "." : path.slice(0, i);
+}
 
 // src/diff.ts
 var HUNK = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@/;
@@ -392,8 +476,8 @@ function isMutableSource(path) {
 }
 
 // src/generate.ts
-var import_node_fs4 = require("node:fs");
-var import_node_path3 = require("node:path");
+var import_node_fs5 = require("node:fs");
+var import_node_path4 = require("node:path");
 
 // src/prompt.ts
 var SYSTEM_PROMPT = `\uB2F9\uC2E0\uC740 TypeScript/JavaScript \uD14C\uC2A4\uD2B8\uB97C \uC791\uC131\uD558\uB294 \uB3C4\uAD6C\uB2E4.
@@ -496,12 +580,12 @@ function truncate(s, limit) {
 }
 
 // src/testfile.ts
-var import_node_fs2 = require("node:fs");
-var import_node_path = require("node:path");
+var import_node_fs3 = require("node:fs");
+var import_node_path2 = require("node:path");
 var TEST_PATTERN = /\.(test|spec)\.[cm]?[jt]sx?$/;
 var MAX_SCAN_FILES = 2e3;
 function findSiblingTest(repoRoot, sourceRelPath) {
-  const stem = (0, import_node_path.basename)(sourceRelPath, (0, import_node_path.extname)(sourceRelPath));
+  const stem = (0, import_node_path2.basename)(sourceRelPath, (0, import_node_path2.extname)(sourceRelPath));
   let best;
   let scanned = 0;
   for (const rel of walkFiles(repoRoot)) {
@@ -509,7 +593,7 @@ function findSiblingTest(repoRoot, sourceRelPath) {
     if (!TEST_PATTERN.test(rel)) continue;
     let content;
     try {
-      content = (0, import_node_fs2.readFileSync)((0, import_node_path.join)(repoRoot, rel), "utf8");
+      content = (0, import_node_fs3.readFileSync)((0, import_node_path2.join)(repoRoot, rel), "utf8");
     } catch {
       continue;
     }
@@ -521,24 +605,24 @@ function findSiblingTest(repoRoot, sourceRelPath) {
 }
 function generatedTestPath(repoRoot, sourceRelPath, mutantId, sibling) {
   const safeId = mutantId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  const stem = (0, import_node_path.basename)(sourceRelPath, (0, import_node_path.extname)(sourceRelPath));
+  const stem = (0, import_node_path2.basename)(sourceRelPath, (0, import_node_path2.extname)(sourceRelPath));
   const name = `${stem}.mh-${safeId}.test.ts`;
-  if (sibling) return (0, import_node_path.join)((0, import_node_path.dirname)(sibling), name);
+  if (sibling) return (0, import_node_path2.join)((0, import_node_path2.dirname)(sibling), name);
   for (const dir of ["tests", "test", "__tests__"]) {
-    if ((0, import_node_fs2.existsSync)((0, import_node_path.join)(repoRoot, dir))) return (0, import_node_path.join)(dir, name);
+    if ((0, import_node_fs3.existsSync)((0, import_node_path2.join)(repoRoot, dir))) return (0, import_node_path2.join)(dir, name);
   }
-  return (0, import_node_path.join)((0, import_node_path.dirname)(sourceRelPath), name);
+  return (0, import_node_path2.join)((0, import_node_path2.dirname)(sourceRelPath), name);
 }
 function writeGeneratedTest(repoRoot, relPath, content) {
-  (0, import_node_fs2.writeFileSync)((0, import_node_path.join)(repoRoot, relPath), content);
+  (0, import_node_fs3.writeFileSync)((0, import_node_path2.join)(repoRoot, relPath), content);
 }
 function removeGeneratedTest(repoRoot, relPath) {
-  (0, import_node_fs2.rmSync)((0, import_node_path.join)(repoRoot, relPath), { force: true });
+  (0, import_node_fs3.rmSync)((0, import_node_path2.join)(repoRoot, relPath), { force: true });
 }
 function* walkFiles(root) {
   let entries;
   try {
-    entries = (0, import_node_fs2.readdirSync)(root, { recursive: true });
+    entries = (0, import_node_fs3.readdirSync)(root, { recursive: true });
   } catch {
     return;
   }
@@ -562,10 +646,10 @@ function occurrences(haystack, needle) {
 }
 
 // src/verify.ts
-var import_node_path2 = require("node:path");
+var import_node_path3 = require("node:path");
 
 // src/apply.ts
-var import_node_fs3 = require("node:fs");
+var import_node_fs4 = require("node:fs");
 function offsetOf(source, line, column) {
   let offset = 0;
   let currentLine = 1;
@@ -590,12 +674,12 @@ function applyMutant(source, mutant) {
   return source.slice(0, start) + mutant.replacement + source.slice(end);
 }
 async function withMutantApplied(absPath, mutant, fn) {
-  const original = (0, import_node_fs3.readFileSync)(absPath, "utf8");
+  const original = (0, import_node_fs4.readFileSync)(absPath, "utf8");
   try {
-    (0, import_node_fs3.writeFileSync)(absPath, applyMutant(original, mutant));
+    (0, import_node_fs4.writeFileSync)(absPath, applyMutant(original, mutant));
     return await fn();
   } finally {
-    (0, import_node_fs3.writeFileSync)(absPath, original);
+    (0, import_node_fs4.writeFileSync)(absPath, original);
   }
 }
 
@@ -660,7 +744,7 @@ async function verifyGeneratedTest(opts) {
     });
     if (!original.passed) return reject("passes-on-original");
     const mutated = await withMutantApplied(
-      (0, import_node_path2.join)(repoRoot, mutant.path),
+      (0, import_node_path3.join)(repoRoot, mutant.path),
       mutant,
       () => runTests(repoRoot, runner, { testFile: testFileRel, configFile })
     );
@@ -713,15 +797,15 @@ function tail(output, limit = 800) {
 // src/generate.ts
 async function generateKillingTest(mutant, opts) {
   const { repoRoot, runner, provider, maxAttempts = 2 } = opts;
-  const absSource = (0, import_node_path3.join)(repoRoot, mutant.path);
+  const absSource = (0, import_node_path4.join)(repoRoot, mutant.path);
   let source;
   try {
-    source = (0, import_node_fs4.readFileSync)(absSource, "utf8");
+    source = (0, import_node_fs5.readFileSync)(absSource, "utf8");
   } catch {
     return { mutant, accepted: false, attempts: [], error: `\uC18C\uC2A4\uB97C \uC77D\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4: ${mutant.path}` };
   }
   const sibling = findSiblingTest(repoRoot, mutant.path);
-  const siblingTest = sibling ? { path: sibling, content: (0, import_node_fs4.readFileSync)((0, import_node_path3.join)(repoRoot, sibling), "utf8") } : void 0;
+  const siblingTest = sibling ? { path: sibling, content: (0, import_node_fs5.readFileSync)((0, import_node_path4.join)(repoRoot, sibling), "utf8") } : void 0;
   const snippet = sourceSnippet(
     source,
     Math.max(1, mutant.line - 15),
@@ -730,22 +814,41 @@ async function generateKillingTest(mutant, opts) {
   const attempts = [];
   let previousFailure;
   for (let i = 0; i < maxAttempts; i++) {
+    const userPrompt = buildUserPrompt({
+      mutant,
+      sourceSnippet: snippet,
+      siblingTest,
+      previousFailure
+    });
+    const key = opts.cache ? cacheKey({
+      mutant,
+      prompt: `${SYSTEM_PROMPT}
+${userPrompt}`,
+      model: provider.name,
+      attempt: i
+    }) : void 0;
     let testSource;
-    try {
-      const res = await provider.generate({
-        system: SYSTEM_PROMPT,
-        user: buildUserPrompt({ mutant, sourceSnippet: snippet, siblingTest, previousFailure }),
-        // 첫 시도는 결정론적으로, 재시도는 다른 접근을 유도한다.
-        temperature: i === 0 ? 0.1 : 0.6
-      });
-      testSource = extractTestSource(res.text);
-    } catch (err) {
-      return {
-        mutant,
-        accepted: false,
-        attempts,
-        error: err instanceof Error ? err.message : String(err)
-      };
+    const cached = key ? opts.cache?.get(key) : void 0;
+    if (cached !== void 0) {
+      testSource = cached;
+    } else {
+      try {
+        const res = await provider.generate({
+          system: SYSTEM_PROMPT,
+          user: userPrompt,
+          // 첫 시도는 결정론적으로, 재시도는 다른 접근을 유도한다.
+          temperature: i === 0 ? 0.1 : 0.6
+        });
+        testSource = extractTestSource(res.text);
+      } catch (err) {
+        return {
+          mutant,
+          accepted: false,
+          attempts,
+          error: err instanceof Error ? err.message : String(err)
+        };
+      }
+      if (key && testSource) opts.cache?.set(key, testSource);
     }
     if (!testSource) {
       previousFailure = { gate: "empty-response", detail: "\uBE48 \uC751\uB2F5" };
@@ -797,7 +900,8 @@ function summarize(results) {
     rejectedBy,
     totalAttempts,
     gateRejections,
-    rescuedByRetry
+    rescuedByRetry,
+    cacheHits: 0
   };
 }
 
@@ -886,14 +990,14 @@ function sliceSource(lines, loc) {
 
 // src/stryker.ts
 var import_node_child_process2 = require("node:child_process");
-var import_node_fs5 = require("node:fs");
+var import_node_fs6 = require("node:fs");
 var import_node_module = require("node:module");
-var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
 var STRYKER_RANGE = "^9.6.1";
 var WORK_DIR = ".mutant-hunter";
 function detectTestRunner(repoRoot) {
-  const pkgPath = (0, import_node_path4.join)(repoRoot, "package.json");
-  const pkg = JSON.parse((0, import_node_fs5.readFileSync)(pkgPath, "utf8"));
+  const pkgPath = (0, import_node_path5.join)(repoRoot, "package.json");
+  const pkg = JSON.parse((0, import_node_fs6.readFileSync)(pkgPath, "utf8"));
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   if (deps["vitest"]) return "vitest";
   if (deps["jest"]) return "jest";
@@ -936,7 +1040,7 @@ function buildStrykerConfig(opts) {
 }
 function resolvesFrom(repoRoot, pkg) {
   try {
-    (0, import_node_module.createRequire)((0, import_node_path4.join)(repoRoot, "package.json")).resolve(`${pkg}/package.json`);
+    (0, import_node_module.createRequire)((0, import_node_path5.join)(repoRoot, "package.json")).resolve(`${pkg}/package.json`);
     return true;
   } catch {
     return false;
@@ -961,10 +1065,10 @@ ${stderr.slice(-1e3)}`);
   return { installed: true, packages: needed };
 }
 async function runStryker(opts) {
-  const workDir = (0, import_node_path4.join)(opts.repoRoot, WORK_DIR);
-  (0, import_node_fs5.mkdirSync)(workDir, { recursive: true });
-  const configPath = (0, import_node_path4.join)(workDir, "stryker.conf.json");
-  (0, import_node_fs5.writeFileSync)(configPath, JSON.stringify(buildStrykerConfig(opts), null, 2));
+  const workDir = (0, import_node_path5.join)(opts.repoRoot, WORK_DIR);
+  (0, import_node_fs6.mkdirSync)(workDir, { recursive: true });
+  const configPath = (0, import_node_path5.join)(workDir, "stryker.conf.json");
+  (0, import_node_fs6.writeFileSync)(configPath, JSON.stringify(buildStrykerConfig(opts), null, 2));
   const { code, stderr } = await exec(
     "npx",
     ["--no-install", "stryker", "run", configPath],
@@ -972,7 +1076,7 @@ async function runStryker(opts) {
   );
   try {
     const report = JSON.parse(
-      (0, import_node_fs5.readFileSync)((0, import_node_path4.join)(workDir, "mutation.json"), "utf8")
+      (0, import_node_fs6.readFileSync)((0, import_node_path5.join)(workDir, "mutation.json"), "utf8")
     );
     return { ok: true, report };
   } catch {
@@ -1095,8 +1199,8 @@ async function runPipeline(opts) {
   const project = createProject(tsconfigOf(repoRoot));
   const ranges = [];
   for (const file of changed) {
-    const abs = (0, import_node_path5.join)(repoRoot, file.path);
-    if (!(0, import_node_fs6.existsSync)(abs)) continue;
+    const abs = (0, import_node_path6.join)(repoRoot, file.path);
+    if (!(0, import_node_fs7.existsSync)(abs)) continue;
     ranges.push(...resolveMutateRanges(project, abs, file.path, file.changedLines));
   }
   if (ranges.length === 0) {
@@ -1143,7 +1247,10 @@ ${strykerResult.stderr.slice(-2e3)}`
   if (targets.length < scan.candidates.length) {
     log(`\uD6C4\uBCF4 ${scan.candidates.length}\uAC1C \uC911 \uC0C1\uC704 ${targets.length}\uAC1C\uB9CC \uCC98\uB9AC\uD569\uB2C8\uB2E4.`);
   }
-  log(`\uD14C\uC2A4\uD2B8 \uC0DD\uC131 \uC2DC\uC791 (provider=${provider.name})`);
+  const cache = openCache(repoRoot, WORK_DIR, opts.cache !== false);
+  log(
+    `\uD14C\uC2A4\uD2B8 \uC0DD\uC131 \uC2DC\uC791 (provider=${provider.name}${opts.cache === false ? ", \uCE90\uC2DC \uC5C6\uC74C" : ""})`
+  );
   const results = [];
   for (const mutant of targets) {
     const r = await generateKillingTest(mutant, {
@@ -1151,7 +1258,8 @@ ${strykerResult.stderr.slice(-2e3)}`
       runner: testRunner,
       provider,
       configFile: opts.runnerConfig,
-      maxAttempts: opts.maxAttempts ?? 2
+      maxAttempts: opts.maxAttempts ?? 2,
+      cache
     });
     results.push(r);
     const label = `[${mutant.mutatorName}] ${mutant.path}:${mutant.line}`;
@@ -1162,8 +1270,12 @@ ${strykerResult.stderr.slice(-2e3)}`
       log(`  \u274C ${label} \u2014 \uD3D0\uAE30 (${why})`);
     }
   }
-  const summary = summarize(results);
-  log(`\uCC44\uD0DD ${summary.accepted}/${summary.total} (LLM \uD638\uCD9C ${summary.totalAttempts}\uD68C)`);
+  if (cache instanceof FileCache) cache.flush();
+  const summary = { ...summarize(results), cacheHits: cache.hits };
+  const apiCalls = summary.totalAttempts - summary.cacheHits;
+  log(
+    `\uCC44\uD0DD ${summary.accepted}/${summary.total} (\uC0DD\uC131 \uC2DC\uB3C4 ${summary.totalAttempts}\uD68C, API \uD638\uCD9C ${apiCalls}\uD68C${summary.cacheHits > 0 ? `, \uCE90\uC2DC \uC801\uC911 ${summary.cacheHits}\uD68C` : ""})`
+  );
   for (const [reason, n] of Object.entries(summary.rejectedBy)) {
     log(`  \uD3D0\uAE30 ${reason}: ${n}\uAC1C`);
   }
@@ -1176,23 +1288,23 @@ function countBy(items) {
   return [...map.entries()];
 }
 function writeWorkFile(repoRoot, name, data) {
-  const dir = (0, import_node_path5.join)(repoRoot, WORK_DIR);
-  (0, import_node_fs6.mkdirSync)(dir, { recursive: true });
-  (0, import_node_fs6.writeFileSync)((0, import_node_path5.join)(dir, name), JSON.stringify(data, null, 2));
+  const dir = (0, import_node_path6.join)(repoRoot, WORK_DIR);
+  (0, import_node_fs7.mkdirSync)(dir, { recursive: true });
+  (0, import_node_fs7.writeFileSync)((0, import_node_path6.join)(dir, name), JSON.stringify(data, null, 2));
 }
 function loadEquivalents(repoRoot) {
-  const path = (0, import_node_path5.join)(repoRoot, WORK_DIR, "equivalents.json");
-  if (!(0, import_node_fs6.existsSync)(path)) return /* @__PURE__ */ new Set();
+  const path = (0, import_node_path6.join)(repoRoot, WORK_DIR, "equivalents.json");
+  if (!(0, import_node_fs7.existsSync)(path)) return /* @__PURE__ */ new Set();
   try {
-    const raw = JSON.parse((0, import_node_fs6.readFileSync)(path, "utf8"));
+    const raw = JSON.parse((0, import_node_fs7.readFileSync)(path, "utf8"));
     return new Set(Array.isArray(raw) ? raw : []);
   } catch {
     return /* @__PURE__ */ new Set();
   }
 }
 function tsconfigOf(repoRoot) {
-  const p = (0, import_node_path5.join)(repoRoot, "tsconfig.json");
-  return (0, import_node_fs6.existsSync)(p) ? p : void 0;
+  const p = (0, import_node_path6.join)(repoRoot, "tsconfig.json");
+  return (0, import_node_fs7.existsSync)(p) ? p : void 0;
 }
 
 // src/explain.ts

@@ -20,7 +20,9 @@ export function renderEvalReport(run: EvalRun, comparison?: Comparison): string 
       `| 시도한 뮤턴트 | ${a.attempted}개 |`,
       `| 채택 | ${a.accepted}개 |`,
       `| **채택률** | **${(a.acceptRate ?? 0).toFixed(1)}%** |`,
-      `| LLM 호출 | ${a.llmCalls}회 |`,
+      `| 생성 시도 | ${a.llmCalls}회 |`,
+      `| **API 호출** | **${a.apiCalls ?? a.llmCalls}회**` +
+        `${(a.cacheHits ?? 0) > 0 ? ` (캐시 적중 ${a.cacheHits}회)` : ""} |`,
     );
   } else {
     lines.push("", "> 생성 단계를 실행하지 않았습니다 (API 키 없음).");

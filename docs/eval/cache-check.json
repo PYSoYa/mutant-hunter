@@ -1,0 +1,54 @@
+{
+  "label": "cache-check",
+  "provider": "mistral",
+  "entries": [
+    {
+      "name": "jsonGuard-scanner",
+      "status": "generated",
+      "durationMs": 67941,
+      "mutationScore": 63.1578947368421,
+      "totalMutants": 57,
+      "survived": 17,
+      "noCoverage": 4,
+      "candidates": 12,
+      "filtered": {
+        "no-coverage": 4,
+        "noise-string-literal": 5
+      },
+      "attempted": 4,
+      "accepted": 1,
+      "acceptRate": 25,
+      "llmCalls": 8,
+      "cacheHits": 8,
+      "apiCalls": 0,
+      "rejectedBy": {
+        "kills-mutant": 3
+      },
+      "gateRejections": {
+        "kills-mutant": 7
+      },
+      "rescuedByRetry": 1
+    }
+  ],
+  "aggregate": {
+    "entries": 1,
+    "totalMutants": 57,
+    "totalCandidates": 12,
+    "weightedMutationScore": 63.1578947368421,
+    "totalDurationMs": 67941,
+    "attempted": 4,
+    "accepted": 1,
+    "acceptRate": 25,
+    "llmCalls": 8,
+    "apiCalls": 0,
+    "cacheHits": 8,
+    "rejectedBy": {
+      "kills-mutant": 3
+    },
+    "gateRejections": {
+      "kills-mutant": 7
+    },
+    "rescuedByRetry": 1,
+    "totalGateRejections": 7
+  }
+}

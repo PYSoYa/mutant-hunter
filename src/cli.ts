@@ -13,6 +13,7 @@ type Args = {
   runnerConfig?: string;
   concurrency?: number;
   generate: boolean;
+  cache: boolean;
   maxMutants?: number;
   maxAttempts?: number;
 };
@@ -20,7 +21,7 @@ type Args = {
 const USAGE =
   "사용법: scan --repo <경로> [--base <ref> --head <ref> | --diff-file <경로>] " +
   "[--runner-config <경로>] [--concurrency <n>] " +
-  "[--generate] [--max-mutants <n>] [--max-attempts <n>]";
+  "[--generate] [--max-mutants <n>] [--max-attempts <n>] [--no-cache]";
 
 async function main(): Promise<void> {
   const args = parseArgs(process.argv.slice(2));
@@ -48,6 +49,7 @@ async function main(): Promise<void> {
     concurrency: args.concurrency,
     maxMutants: args.maxMutants,
     maxAttempts: args.maxAttempts,
+    cache: args.cache,
     log: (m) => console.log(m),
   });
 
@@ -87,7 +89,7 @@ function resolvePath(p: string): string {
 export function parseArgs(argv: string[]): Args {
   const out: Record<string, string> = {};
   const flags = new Set<string>();
-  const BOOLEAN_FLAGS = new Set(["generate"]);
+  const BOOLEAN_FLAGS = new Set(["generate", "no-cache"]);
 
   for (let i = 0; i < argv.length; i++) {
     const key = argv[i];
@@ -113,6 +115,7 @@ export function parseArgs(argv: string[]): Args {
     runnerConfig: out["runner-config"],
     concurrency: out["concurrency"] ? Number(out["concurrency"]) : undefined,
     generate: flags.has("generate"),
+    cache: !flags.has("no-cache"),
     maxMutants: out["max-mutants"] ? Number(out["max-mutants"]) : undefined,
     maxAttempts: out["max-attempts"] ? Number(out["max-attempts"]) : undefined,
   };
