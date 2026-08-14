@@ -47,6 +47,8 @@ export type PromptContext = {
   sourceSnippet: string;
   /** 스타일 참고용 기존 테스트 파일 */
   siblingTest?: { path: string; content: string };
+  /** 대상 모듈이 실제로 내보내는 것들. 없는 API를 지어내지 않게 한다. */
+  moduleExports?: string;
   /** 이전 시도가 어느 게이트에서 왜 떨어졌는지 */
   previousFailure?: { gate: string; detail: string };
 };
@@ -71,6 +73,16 @@ export function buildUserPrompt(ctx: PromptContext): string {
       "\n```",
     `## 뮤턴트를 감싸는 코드\n\`\`\`ts\n${sourceSnippet}\n\`\`\``,
   ];
+
+  if (ctx.moduleExports) {
+    parts.push(
+      `## ${mutant.path}가 내보내는 것\n` +
+        "**이 목록에 없는 이름은 존재하지 않는다.** 지어내지 마라.\n" +
+        "```\n" +
+        ctx.moduleExports +
+        "\n```",
+    );
+  }
 
   if (siblingTest) {
     parts.push(

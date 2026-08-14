@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cacheKey, type GenerationCache } from "./cache.js";
+import { describeExports } from "./exports.js";
 import type { LLMProvider } from "./llm/provider.js";
 import {
   buildUserPrompt,
@@ -9,6 +10,7 @@ import {
   SYSTEM_PROMPT,
 } from "./prompt.js";
 import type { TestRunner } from "./stryker.js";
+import { createProject } from "./targets.js";
 import { findSiblingTest, generatedTestPath } from "./testfile.js";
 import type { Mutant } from "./types.js";
 import { verifyGeneratedTest, type GateName, type GateResult } from "./verify.js";
@@ -83,6 +85,9 @@ export async function generateKillingTest(
     mutant.endLine + 15,
   );
 
+  // 모델이 없는 함수를 지어내는 건 뭐가 있는지 알려주지 않았기 때문이다.
+  const moduleExports = describeExports(createProject(), absSource);
+
   const attempts: Attempt[] = [];
   let previousFailure: { gate: string; detail: string } | undefined;
 
@@ -91,6 +96,7 @@ export async function generateKillingTest(
       mutant,
       sourceSnippet: snippet,
       siblingTest,
+      moduleExports,
       previousFailure,
     });
     const key = opts.cache

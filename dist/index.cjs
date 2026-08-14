@@ -479,6 +479,43 @@ function isMutableSource(path) {
 var import_node_fs5 = require("node:fs");
 var import_node_path4 = require("node:path");
 
+// src/exports.ts
+var import_ts_morph = require("ts-morph");
+function describeExports(project, absPath, limit = 40) {
+  let sourceFile;
+  try {
+    sourceFile = project.getSourceFile(absPath) ?? project.addSourceFileAtPath(absPath);
+  } catch {
+    return "";
+  }
+  const lines = [];
+  for (const [name, decls] of sourceFile.getExportedDeclarations()) {
+    if (lines.length >= limit) break;
+    const decl = decls[0];
+    if (!decl) continue;
+    lines.push(`${name}: ${signatureOf(decl)}`);
+  }
+  return lines.join("\n");
+}
+function signatureOf(decl) {
+  if (import_ts_morph.Node.isFunctionDeclaration(decl) || import_ts_morph.Node.isMethodDeclaration(decl)) {
+    const params = decl.getParameters().map((p) => `${p.getName()}${p.isOptional() ? "?" : ""}: ${typeText(p.getType().getText(p))}`).join(", ");
+    return `(${params}) => ${typeText(decl.getReturnType().getText(decl))}`;
+  }
+  if (import_ts_morph.Node.isClassDeclaration(decl)) {
+    const members = decl.getMembers().filter((m) => import_ts_morph.Node.isMethodDeclaration(m) && !m.hasModifier("private")).map((m) => import_ts_morph.Node.isMethodDeclaration(m) ? m.getName() : "").filter(Boolean);
+    return `class { ${members.join(", ")} }`;
+  }
+  if (import_ts_morph.Node.isTypeAliasDeclaration(decl) || import_ts_morph.Node.isInterfaceDeclaration(decl)) {
+    return "type";
+  }
+  return typeText(decl.getType().getText(decl));
+}
+function typeText(text, limit = 120) {
+  const cleaned = text.replace(/import\("[^"]*"\)\./g, "").replace(/\s+/g, " ").trim();
+  return cleaned.length > limit ? `${cleaned.slice(0, limit)}\u2026` : cleaned;
+}
+
 // src/prompt.ts
 var SYSTEM_PROMPT = `\uB2F9\uC2E0\uC740 TypeScript/JavaScript \uD14C\uC2A4\uD2B8\uB97C \uC791\uC131\uD558\uB294 \uB3C4\uAD6C\uB2E4.
 
@@ -539,6 +576,14 @@ ${mutant.path}`,
 ${sourceSnippet2}
 \`\`\``
   ];
+  if (ctx.moduleExports) {
+    parts.push(
+      `## ${mutant.path}\uAC00 \uB0B4\uBCF4\uB0B4\uB294 \uAC83
+**\uC774 \uBAA9\uB85D\uC5D0 \uC5C6\uB294 \uC774\uB984\uC740 \uC874\uC7AC\uD558\uC9C0 \uC54A\uB294\uB2E4.** \uC9C0\uC5B4\uB0B4\uC9C0 \uB9C8\uB77C.
+\`\`\`
+` + ctx.moduleExports + "\n```"
+    );
+  }
   if (siblingTest) {
     parts.push(
       `## \uAE30\uC874 \uD14C\uC2A4\uD2B8 \uD30C\uC77C (${siblingTest.path})
@@ -577,6 +622,99 @@ function sourceSnippet(source, startLine, endLine) {
 function truncate(s, limit) {
   return s.length > limit ? `${s.slice(0, limit)}
 \u2026 (\uC0DD\uB7B5)` : s;
+}
+
+// src/targets.ts
+var import_ts_morph2 = require("ts-morph");
+var DECLARATION_KINDS = /* @__PURE__ */ new Set([
+  import_ts_morph2.SyntaxKind.FunctionDeclaration,
+  import_ts_morph2.SyntaxKind.MethodDeclaration,
+  import_ts_morph2.SyntaxKind.Constructor,
+  import_ts_morph2.SyntaxKind.GetAccessor,
+  import_ts_morph2.SyntaxKind.SetAccessor,
+  import_ts_morph2.SyntaxKind.FunctionExpression,
+  import_ts_morph2.SyntaxKind.ArrowFunction,
+  import_ts_morph2.SyntaxKind.ClassDeclaration
+]);
+function createProject(tsConfigFilePath) {
+  if (tsConfigFilePath) {
+    return new import_ts_morph2.Project({ tsConfigFilePath, skipAddingFilesFromTsConfig: true });
+  }
+  return new import_ts_morph2.Project({
+    compilerOptions: { allowJs: true, target: 99 },
+    skipFileDependencyResolution: true
+  });
+}
+function resolveMutateRanges(project, absPath, repoRelPath, changedLines) {
+  const sourceFile = project.getSourceFile(absPath) ?? project.addSourceFileAtPath(absPath);
+  const compilerNode = sourceFile.compilerNode;
+  const totalLines = sourceFile.getEndLineNumber();
+  const raw = [];
+  for (const line of changedLines) {
+    if (line > totalLines) continue;
+    const pos = safePosOfLine(compilerNode, line);
+    if (pos === null) continue;
+    const node = sourceFile.getDescendantAtPos(pos);
+    const decl = node ? findEnclosingDeclaration(node) : void 0;
+    if (decl) {
+      raw.push({
+        path: repoRelPath,
+        start: decl.getStartLineNumber(),
+        end: decl.getEndLineNumber(),
+        symbol: describe(decl)
+      });
+    } else {
+      raw.push({ path: repoRelPath, start: line, end: line, symbol: "(top-level)" });
+    }
+  }
+  return mergeRanges(raw);
+}
+function findEnclosingDeclaration(node) {
+  let found;
+  let cursor = node;
+  while (cursor) {
+    if (DECLARATION_KINDS.has(cursor.getKind())) found = cursor;
+    cursor = cursor.getParent();
+  }
+  return found;
+}
+function describe(decl) {
+  if (import_ts_morph2.Node.isNameable(decl) || import_ts_morph2.Node.isNamed(decl)) {
+    const name = decl.getName?.();
+    if (name) return name;
+  }
+  const varDecl = decl.getFirstAncestorByKind(import_ts_morph2.SyntaxKind.VariableDeclaration);
+  if (varDecl) return varDecl.getName();
+  return `${decl.getKindName()}@${decl.getStartLineNumber()}`;
+}
+function mergeRanges(ranges) {
+  if (ranges.length === 0) return [];
+  const sorted = [...ranges].sort(
+    (a, b) => a.path.localeCompare(b.path) || a.start - b.start || a.end - b.end
+  );
+  const out = [];
+  for (const r of sorted) {
+    const prev = out[out.length - 1];
+    if (prev && prev.path === r.path && r.start <= prev.end + 1) {
+      if (r.end > prev.end) prev.end = r.end;
+      if (!prev.symbol.split(", ").includes(r.symbol)) {
+        prev.symbol = `${prev.symbol}, ${r.symbol}`;
+      }
+    } else {
+      out.push({ ...r });
+    }
+  }
+  return out;
+}
+function toStrykerMutateArgs(ranges) {
+  return ranges.map((r) => `${r.path}:${r.start}-${r.end}`);
+}
+function safePosOfLine(compilerNode, line) {
+  try {
+    return compilerNode.getPositionOfLineAndCharacter(line - 1, 0);
+  } catch {
+    return null;
+  }
 }
 
 // src/testfile.ts
@@ -734,6 +872,36 @@ async function runTests(repoRoot, runner, opts = {}) {
   });
 }
 
+// src/syntax.ts
+var import_ts_morph3 = require("ts-morph");
+function checkSyntax(source, fileName = "generated.test.ts") {
+  if (source.trim().length === 0) {
+    return { ok: false, message: "\uBE48 \uD30C\uC77C\uC785\uB2C8\uB2E4." };
+  }
+  const out = import_ts_morph3.ts.transpileModule(source, {
+    fileName,
+    reportDiagnostics: true,
+    compilerOptions: {
+      target: import_ts_morph3.ts.ScriptTarget.ESNext,
+      module: import_ts_morph3.ts.ModuleKind.ESNext,
+      jsx: import_ts_morph3.ts.JsxEmit.Preserve,
+      // 문법만 본다. 라이브러리 정의를 읽지 않으므로 빠르다.
+      isolatedModules: true
+    }
+  });
+  const diagnostics = out.diagnostics ?? [];
+  if (diagnostics.length === 0) return { ok: true };
+  return { ok: false, message: diagnostics.slice(0, 5).map(describe2).join("\n") };
+}
+function describe2(d) {
+  const text = import_ts_morph3.ts.flattenDiagnosticMessageText(d.messageText, " ");
+  if (d.file && d.start !== void 0) {
+    const { line, character } = d.file.getLineAndCharacterOfPosition(d.start);
+    return `L${line + 1}:${character + 1} ${text}`;
+  }
+  return text;
+}
+
 // src/verify.ts
 async function verifyGeneratedTest(opts) {
   const {
@@ -752,6 +920,13 @@ async function verifyGeneratedTest(opts) {
     gates,
     rejectedAt: gate
   });
+  const syntax = checkSyntax(testSource, testFileRel);
+  gates.push({
+    gate: "parses",
+    ok: syntax.ok,
+    detail: syntax.ok ? "\uD1B5\uACFC" : syntax.message
+  });
+  if (!syntax.ok) return reject("parses");
   writeGeneratedTest(repoRoot, testFileRel, testSource);
   try {
     const original = await runTests(repoRoot, runner, {
@@ -761,7 +936,7 @@ async function verifyGeneratedTest(opts) {
     gates.push({
       gate: "passes-on-original",
       ok: original.passed,
-      detail: original.passed ? "\uD1B5\uACFC" : original.timedOut ? "\uC2E4\uD589\uC774 \uC0C1\uD55C\uC744 \uB118\uACA8 \uAC15\uC81C \uC885\uB8CC\uB428 (\uBA48\uCD94\uB294 \uD14C\uC2A4\uD2B8)" : tail(original.output)
+      detail: original.passed ? "\uD1B5\uACFC" : original.timedOut ? "\uC2E4\uD589\uC774 \uC0C1\uD55C\uC744 \uB118\uACA8 \uAC15\uC81C \uC885\uB8CC\uB428 (\uBA48\uCD94\uB294 \uD14C\uC2A4\uD2B8)" : extractFailure(original.output)
     });
     if (!original.passed) return reject("passes-on-original");
     const mutated = await withMutantApplied(
@@ -801,7 +976,7 @@ async function verifyGeneratedTest(opts) {
       gates.push({
         gate: "suite-intact",
         ok: suite.passed,
-        detail: suite.passed ? "\uAE30\uC874 \uC2A4\uC704\uD2B8 \uD1B5\uACFC" : tail(suite.output)
+        detail: suite.passed ? "\uAE30\uC874 \uC2A4\uC704\uD2B8 \uD1B5\uACFC" : extractFailure(suite.output)
       });
       if (!suite.passed) return reject("suite-intact");
     }
@@ -810,9 +985,26 @@ async function verifyGeneratedTest(opts) {
     removeGeneratedTest(repoRoot, testFileRel);
   }
 }
-function tail(output, limit = 800) {
+function extractFailure(output, limit = 1200) {
   const trimmed = output.trim();
-  return trimmed.length > limit ? `\u2026${trimmed.slice(-limit)}` : trimmed;
+  if (trimmed.length === 0) return "(\uCD9C\uB825 \uC5C6\uC74C)";
+  const markers = [
+    "Transform failed",
+    "SyntaxError",
+    "ReferenceError",
+    "TypeError",
+    "AssertionError",
+    "Error:",
+    "FAIL ",
+    "No test files found"
+  ];
+  let start = -1;
+  for (const marker of markers) {
+    const at = trimmed.indexOf(marker);
+    if (at !== -1 && (start === -1 || at < start)) start = at;
+  }
+  const body = start === -1 ? trimmed : trimmed.slice(start);
+  return body.length > limit ? `${body.slice(0, limit)}\u2026` : body;
 }
 
 // src/generate.ts
@@ -832,6 +1024,7 @@ async function generateKillingTest(mutant, opts) {
     Math.max(1, mutant.line - 15),
     mutant.endLine + 15
   );
+  const moduleExports = describeExports(createProject(), absSource);
   const attempts = [];
   let previousFailure;
   for (let i = 0; i < maxAttempts; i++) {
@@ -839,6 +1032,7 @@ async function generateKillingTest(mutant, opts) {
       mutant,
       sourceSnippet: snippet,
       siblingTest,
+      moduleExports,
       previousFailure
     });
     const key = opts.cache ? cacheKey({
@@ -1113,99 +1307,6 @@ function exec(cmd, args, cwd) {
     });
     child.on("close", (code) => resolve({ code: code ?? 1, stderr }));
   });
-}
-
-// src/targets.ts
-var import_ts_morph = require("ts-morph");
-var DECLARATION_KINDS = /* @__PURE__ */ new Set([
-  import_ts_morph.SyntaxKind.FunctionDeclaration,
-  import_ts_morph.SyntaxKind.MethodDeclaration,
-  import_ts_morph.SyntaxKind.Constructor,
-  import_ts_morph.SyntaxKind.GetAccessor,
-  import_ts_morph.SyntaxKind.SetAccessor,
-  import_ts_morph.SyntaxKind.FunctionExpression,
-  import_ts_morph.SyntaxKind.ArrowFunction,
-  import_ts_morph.SyntaxKind.ClassDeclaration
-]);
-function createProject(tsConfigFilePath) {
-  if (tsConfigFilePath) {
-    return new import_ts_morph.Project({ tsConfigFilePath, skipAddingFilesFromTsConfig: true });
-  }
-  return new import_ts_morph.Project({
-    compilerOptions: { allowJs: true, target: 99 },
-    skipFileDependencyResolution: true
-  });
-}
-function resolveMutateRanges(project, absPath, repoRelPath, changedLines) {
-  const sourceFile = project.getSourceFile(absPath) ?? project.addSourceFileAtPath(absPath);
-  const compilerNode = sourceFile.compilerNode;
-  const totalLines = sourceFile.getEndLineNumber();
-  const raw = [];
-  for (const line of changedLines) {
-    if (line > totalLines) continue;
-    const pos = safePosOfLine(compilerNode, line);
-    if (pos === null) continue;
-    const node = sourceFile.getDescendantAtPos(pos);
-    const decl = node ? findEnclosingDeclaration(node) : void 0;
-    if (decl) {
-      raw.push({
-        path: repoRelPath,
-        start: decl.getStartLineNumber(),
-        end: decl.getEndLineNumber(),
-        symbol: describe(decl)
-      });
-    } else {
-      raw.push({ path: repoRelPath, start: line, end: line, symbol: "(top-level)" });
-    }
-  }
-  return mergeRanges(raw);
-}
-function findEnclosingDeclaration(node) {
-  let found;
-  let cursor = node;
-  while (cursor) {
-    if (DECLARATION_KINDS.has(cursor.getKind())) found = cursor;
-    cursor = cursor.getParent();
-  }
-  return found;
-}
-function describe(decl) {
-  if (import_ts_morph.Node.isNameable(decl) || import_ts_morph.Node.isNamed(decl)) {
-    const name = decl.getName?.();
-    if (name) return name;
-  }
-  const varDecl = decl.getFirstAncestorByKind(import_ts_morph.SyntaxKind.VariableDeclaration);
-  if (varDecl) return varDecl.getName();
-  return `${decl.getKindName()}@${decl.getStartLineNumber()}`;
-}
-function mergeRanges(ranges) {
-  if (ranges.length === 0) return [];
-  const sorted = [...ranges].sort(
-    (a, b) => a.path.localeCompare(b.path) || a.start - b.start || a.end - b.end
-  );
-  const out = [];
-  for (const r of sorted) {
-    const prev = out[out.length - 1];
-    if (prev && prev.path === r.path && r.start <= prev.end + 1) {
-      if (r.end > prev.end) prev.end = r.end;
-      if (!prev.symbol.split(", ").includes(r.symbol)) {
-        prev.symbol = `${prev.symbol}, ${r.symbol}`;
-      }
-    } else {
-      out.push({ ...r });
-    }
-  }
-  return out;
-}
-function toStrykerMutateArgs(ranges) {
-  return ranges.map((r) => `${r.path}:${r.start}-${r.end}`);
-}
-function safePosOfLine(compilerNode, line) {
-  try {
-    return compilerNode.getPositionOfLineAndCharacter(line - 1, 0);
-  } catch {
-    return null;
-  }
 }
 
 // src/pipeline.ts
@@ -1523,6 +1624,8 @@ function renderAppendix(result, scan) {
 }
 function gateLabel(gate) {
   switch (gate) {
+    case "parses":
+      return "\uBB38\uBC95\uC774 \uC62C\uBC14\uB978\uAC00";
     case "passes-on-original":
       return "\uD604\uC7AC \uCF54\uB4DC\uC5D0\uC11C \uD1B5\uACFC\uD558\uB294\uAC00";
     case "kills-mutant":

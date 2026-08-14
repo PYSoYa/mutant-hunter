@@ -1,0 +1,124 @@
+{
+  "label": "wide-102-diag",
+  "provider": "mistral",
+  "entries": [
+    {
+      "name": "self-week3-gates",
+      "status": "generated",
+      "durationMs": 122968,
+      "mutationScore": 28.508124076809455,
+      "totalMutants": 677,
+      "survived": 51,
+      "noCoverage": 433,
+      "candidates": 24,
+      "filtered": {
+        "no-coverage": 307,
+        "noise-string-literal": 153
+      },
+      "attempted": 24,
+      "accepted": 3,
+      "acceptRate": 12.5,
+      "llmCalls": 45,
+      "cacheHits": 26,
+      "apiCalls": 19,
+      "rejectedBy": {
+        "passes-on-original": 16,
+        "kills-mutant": 4,
+        "parses": 1
+      },
+      "gateRejections": {
+        "passes-on-original": 35,
+        "kills-mutant": 5,
+        "parses": 2
+      },
+      "rescuedByRetry": 0
+    },
+    {
+      "name": "self-week4-action",
+      "status": "generated",
+      "durationMs": 103851,
+      "mutationScore": 19.93006993006993,
+      "totalMutants": 572,
+      "survived": 72,
+      "noCoverage": 386,
+      "candidates": 20,
+      "filtered": {
+        "no-coverage": 266,
+        "noise-string-literal": 172
+      },
+      "attempted": 20,
+      "accepted": 3,
+      "acceptRate": 15,
+      "llmCalls": 38,
+      "cacheHits": 26,
+      "apiCalls": 12,
+      "rejectedBy": {
+        "kills-mutant": 2,
+        "passes-on-original": 14,
+        "parses": 1
+      },
+      "gateRejections": {
+        "kills-mutant": 5,
+        "passes-on-original": 26,
+        "parses": 4
+      },
+      "rescuedByRetry": 1
+    },
+    {
+      "name": "self-week2-scanner",
+      "status": "generated",
+      "durationMs": 273658,
+      "mutationScore": 47.14003944773176,
+      "totalMutants": 507,
+      "survived": 65,
+      "noCoverage": 203,
+      "candidates": 58,
+      "filtered": {
+        "no-coverage": 135,
+        "noise-string-literal": 75
+      },
+      "attempted": 58,
+      "accepted": 19,
+      "acceptRate": 32.758620689655174,
+      "llmCalls": 100,
+      "cacheHits": 75,
+      "apiCalls": 25,
+      "rejectedBy": {
+        "kills-mutant": 11,
+        "passes-on-original": 27,
+        "parses": 1
+      },
+      "gateRejections": {
+        "kills-mutant": 28,
+        "passes-on-original": 52,
+        "parses": 1
+      },
+      "rescuedByRetry": 3
+    }
+  ],
+  "aggregate": {
+    "entries": 3,
+    "totalMutants": 1756,
+    "totalCandidates": 102,
+    "weightedMutationScore": 31.09339407744875,
+    "totalDurationMs": 500477,
+    "attempted": 102,
+    "accepted": 25,
+    "acceptRate": 24.509803921568626,
+    "llmCalls": 183,
+    "apiCalls": 56,
+    "cacheHits": 127,
+    "rejectedBy": {
+      "passes-on-original": 57,
+      "kills-mutant": 17,
+      "parses": 3
+    },
+    "gateRejections": {
+      "passes-on-original": 113,
+      "kills-mutant": 38,
+      "parses": 7
+    },
+    "rescuedByRetry": 4,
+    "totalGateRejections": 158
+  }
+}
