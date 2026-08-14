@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { GenerationResult } from "../src/generate.js";
 import type { PipelineResult } from "../src/pipeline.js";
 import { COMMENT_MARKER, renderReport } from "../src/report.js";
+import { extractFailure } from "../src/verify.js";
 import type { Mutant, MutantScanResult } from "../src/types.js";
 
 const MUTANT: Mutant = {
@@ -208,5 +209,38 @@ describe("renderReport — 길이 상한", () => {
     });
     expect(md.length).toBeLessThanOrEqual(60_000);
     expect(md).toContain("일부를 생략했습니다");
+  });
+});
+
+describe("extractFailure", () => {
+  it("오류 표지부터 잘라낸다", () => {
+    // 꼬리를 남기면 vitest 요약부(테스트 개수, 소요 시간)만 남아
+    // 정작 오류 종류가 사라진다.
+    const out = [
+      "RUN v4",
+      "AssertionError: expected 'false' to be ''",
+      "  at tests/a.test.ts:3",
+      " Test Files  1 failed (1)",
+      " Duration  163ms",
+    ].join("\n");
+    const got = extractFailure(out);
+    expect(got.startsWith("AssertionError")).toBe(true);
+  });
+
+  it("여러 표지 중 가장 먼저 나오는 것을 기준으로 삼는다", () => {
+    const out = "SyntaxError: 문제\n나중에 TypeError: 다른 문제";
+    expect(extractFailure(out).startsWith("SyntaxError")).toBe(true);
+  });
+
+  it("표지가 없으면 전체를 쓴다", () => {
+    expect(extractFailure("알 수 없는 출력")).toBe("알 수 없는 출력");
+  });
+
+  it("빈 출력을 표시한다", () => {
+    expect(extractFailure("   ")).toBe("(출력 없음)");
+  });
+
+  it("길면 자른다", () => {
+    expect(extractFailure(`Error: ${"x".repeat(5000)}`, 100).length).toBeLessThanOrEqual(101);
   });
 });

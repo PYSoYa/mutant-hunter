@@ -100,7 +100,7 @@ export async function verifyGeneratedTest(
         ? "통과"
         : original.timedOut
           ? "실행이 상한을 넘겨 강제 종료됨 (멈추는 테스트)"
-          : tail(original.output),
+          : extractFailure(original.output),
     });
     if (!original.passed) return reject("passes-on-original");
 
@@ -155,7 +155,7 @@ export async function verifyGeneratedTest(
       gates.push({
         gate: "suite-intact",
         ok: suite.passed,
-        detail: suite.passed ? "기존 스위트 통과" : tail(suite.output),
+        detail: suite.passed ? "기존 스위트 통과" : extractFailure(suite.output),
       });
       if (!suite.passed) return reject("suite-intact");
     }
@@ -167,7 +167,36 @@ export async function verifyGeneratedTest(
   }
 }
 
-function tail(output: string, limit = 800): string {
+/**
+ * 실패 출력에서 **쓸모 있는 부분**을 뽑는다.
+ *
+ * 원래는 마지막 800자를 남겼는데, 그건 vitest의 요약부(테스트 개수,
+ * 소요 시간)라 정작 오류 종류가 없다. 그 잘린 텍스트로 실패를 분류하다가
+ * 단언 실패를 문법 오류로 세는 오판을 했다. 폐기 이유를 설명하는 게
+ * 이 도구의 핵심 가치인데 정보가 가장 적은 조각을 남기고 있었다.
+ */
+export function extractFailure(output: string, limit = 1200): string {
   const trimmed = output.trim();
-  return trimmed.length > limit ? `…${trimmed.slice(-limit)}` : trimmed;
+  if (trimmed.length === 0) return "(출력 없음)";
+
+  // 오류는 대개 이 표지 뒤에서 시작한다. 가장 먼저 나오는 것을 기준으로 자른다.
+  const markers = [
+    "Transform failed",
+    "SyntaxError",
+    "ReferenceError",
+    "TypeError",
+    "AssertionError",
+    "Error:",
+    "FAIL ",
+    "No test files found",
+  ];
+
+  let start = -1;
+  for (const marker of markers) {
+    const at = trimmed.indexOf(marker);
+    if (at !== -1 && (start === -1 || at < start)) start = at;
+  }
+
+  const body = start === -1 ? trimmed : trimmed.slice(start);
+  return body.length > limit ? `${body.slice(0, limit)}…` : body;
 }

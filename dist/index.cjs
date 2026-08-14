@@ -936,7 +936,7 @@ async function verifyGeneratedTest(opts) {
     gates.push({
       gate: "passes-on-original",
       ok: original.passed,
-      detail: original.passed ? "\uD1B5\uACFC" : original.timedOut ? "\uC2E4\uD589\uC774 \uC0C1\uD55C\uC744 \uB118\uACA8 \uAC15\uC81C \uC885\uB8CC\uB428 (\uBA48\uCD94\uB294 \uD14C\uC2A4\uD2B8)" : tail(original.output)
+      detail: original.passed ? "\uD1B5\uACFC" : original.timedOut ? "\uC2E4\uD589\uC774 \uC0C1\uD55C\uC744 \uB118\uACA8 \uAC15\uC81C \uC885\uB8CC\uB428 (\uBA48\uCD94\uB294 \uD14C\uC2A4\uD2B8)" : extractFailure(original.output)
     });
     if (!original.passed) return reject("passes-on-original");
     const mutated = await withMutantApplied(
@@ -976,7 +976,7 @@ async function verifyGeneratedTest(opts) {
       gates.push({
         gate: "suite-intact",
         ok: suite.passed,
-        detail: suite.passed ? "\uAE30\uC874 \uC2A4\uC704\uD2B8 \uD1B5\uACFC" : tail(suite.output)
+        detail: suite.passed ? "\uAE30\uC874 \uC2A4\uC704\uD2B8 \uD1B5\uACFC" : extractFailure(suite.output)
       });
       if (!suite.passed) return reject("suite-intact");
     }
@@ -985,9 +985,26 @@ async function verifyGeneratedTest(opts) {
     removeGeneratedTest(repoRoot, testFileRel);
   }
 }
-function tail(output, limit = 800) {
+function extractFailure(output, limit = 1200) {
   const trimmed = output.trim();
-  return trimmed.length > limit ? `\u2026${trimmed.slice(-limit)}` : trimmed;
+  if (trimmed.length === 0) return "(\uCD9C\uB825 \uC5C6\uC74C)";
+  const markers = [
+    "Transform failed",
+    "SyntaxError",
+    "ReferenceError",
+    "TypeError",
+    "AssertionError",
+    "Error:",
+    "FAIL ",
+    "No test files found"
+  ];
+  let start = -1;
+  for (const marker of markers) {
+    const at = trimmed.indexOf(marker);
+    if (at !== -1 && (start === -1 || at < start)) start = at;
+  }
+  const body = start === -1 ? trimmed : trimmed.slice(start);
+  return body.length > limit ? `${body.slice(0, limit)}\u2026` : body;
 }
 
 // src/generate.ts
