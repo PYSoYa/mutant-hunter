@@ -216,6 +216,23 @@ describe("compareRuns", () => {
     expect(c.removed).toEqual(["b"]);
   });
 
+  it("provider가 바뀐 비교를 표시한다", () => {
+    // 모델과 프롬프트를 한 번에 바꾸면 무엇이 효과를 냈는지 알 수 없다.
+    const before = { ...run("b", { acceptRate: 80 }), provider: "gemini" };
+    const after = { ...run("a", { acceptRate: 80 }), provider: "mistral" };
+    expect(compareRuns(before, after).providerChanged).toBe(true);
+  });
+
+  it("같은 provider면 표시하지 않는다", () => {
+    const before = { ...run("b", { acceptRate: 80 }), provider: "gemini" };
+    const after = { ...run("a", { acceptRate: 80 }), provider: "gemini" };
+    expect(compareRuns(before, after).providerChanged).toBe(false);
+  });
+
+  it("provider 정보가 없으면 판정하지 않는다", () => {
+    expect(compareRuns(run("b", {}), run("a", {})).providerChanged).toBe(false);
+  });
+
   it("표본 추가는 회귀가 아니다", () => {
     const c = compareRuns(
       run("b", { acceptRate: 80 }, ["a"]),
@@ -264,6 +281,7 @@ describe("renderEvalReport", () => {
       ],
       added: [],
       removed: [],
+      providerChanged: false,
       hasRegression: true,
     });
     expect(md).toContain("회귀가 감지됐습니다");
