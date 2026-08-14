@@ -2,10 +2,13 @@ import { join } from "node:path";
 import { withMutantApplied } from "./apply.js";
 import { runTests } from "./runner.js";
 import type { TestRunner } from "./stryker.js";
+import { checkSyntax } from "./syntax.js";
 import { removeGeneratedTest, writeGeneratedTest } from "./testfile.js";
 import type { Mutant } from "./types.js";
 
 export type GateName =
+  /** 파싱은 되는가 — 가장 싼 검사라 맨 앞에 둔다 */
+  | "parses"
   /** 원본 코드에서 통과하는가 — 애초에 말이 되는 테스트인가 */
   | "passes-on-original"
   /** 뮤턴트 코드에서 실패하는가 — 진짜 결함을 잡는가 (핵심 관문) */
@@ -69,6 +72,17 @@ export async function verifyGeneratedTest(
     gates,
     rejectedAt: gate,
   });
+
+  // 게이트 0 — 파싱되는가.
+  // 실측에서 원본 통과 실패의 40%가 문법 오류였다. 그걸 잡으려고
+  // vitest를 띄우는 건 낭비다. 파서는 즉시, 공짜로 답한다.
+  const syntax = checkSyntax(testSource, testFileRel);
+  gates.push({
+    gate: "parses",
+    ok: syntax.ok,
+    detail: syntax.ok ? "통과" : syntax.message,
+  });
+  if (!syntax.ok) return reject("parses");
 
   writeGeneratedTest(repoRoot, testFileRel, testSource);
 

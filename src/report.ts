@@ -182,6 +182,8 @@ function renderAppendix(
 
 function gateLabel(gate: string): string {
   switch (gate) {
+    case "parses":
+      return "문법이 올바른가";
     case "passes-on-original":
       return "현재 코드에서 통과하는가";
     case "kills-mutant":
