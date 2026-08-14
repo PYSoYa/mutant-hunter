@@ -1,0 +1,16 @@
+{
+  "entries": [
+    {
+      "name": "jsonGuard-scanner",
+      "source": { "type": "local", "path": "/private/tmp/claude-501/-Users-yunseokpark-devel/5058c690-4fb6-4a23-9671-1b822951cd15/scratchpad/spike/target" },
+      "diff": { "type": "file", "path": "../tests/fixtures/sample.diff" },
+      "notes": "1주차 스파이크 대상. JSON 추출 스캐너 — 문자열/이스케이프 처리에 실제 갭이 있다."
+    },
+    {
+      "name": "self-dogfood",
+      "source": { "type": "local", "path": ".." },
+      "diff": { "type": "refs", "base": "main", "head": "HEAD" },
+      "notes": "MutantHunter 자신. 4주차에 커버리지 구멍이 드러난 표본."
+    }
+  ]
+}

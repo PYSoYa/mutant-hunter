@@ -2,8 +2,14 @@ import { LLMError, type GenerateRequest, type GenerateResponse, type LLMProvider
 
 const ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 
-/** 무료 티어에서 쓸 수 있는 기본 모델. */
-const DEFAULT_MODEL = "gemini-2.0-flash";
+/**
+ * 기본 모델은 **별칭**으로 둔다.
+ *
+ * 처음엔 `gemini-2.0-flash`를 하드코딩했다가 404로 죽었다 — 모델이 단종된
+ * 것이다. 버전을 코드에 박아두면 언젠가 반드시 같은 방식으로 썩는다.
+ * 정확한 버전이 필요하면 GEMINI_MODEL로 고정할 수 있다.
+ */
+const DEFAULT_MODEL = "gemini-flash-latest";
 
 export type GeminiOptions = {
   apiKey: string;

@@ -8,3 +8,11 @@ reports/
 # 대상 repo에서든 자기 자신에서든 실행 시 생기는 작업 디렉터리
 .mutant-hunter/
 .stryker-tmp/
+
+# API 키. 절대 커밋하지 않는다.
+.env
+.env.*
+!.env.example
+
+# 평가 하네스 작업 디렉터리
+.eval-work/
