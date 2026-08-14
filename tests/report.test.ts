@@ -82,6 +82,7 @@ describe("renderReport — 제안", () => {
       rejectedBy: {},
       totalAttempts: 1,
       gateRejections: {},
+      failureKinds: {},
       rescuedByRetry: 0, cacheHits: 0,
     },
   };
@@ -136,6 +137,7 @@ describe("renderReport — 제안", () => {
         rejectedBy: { "kills-mutant": 1 },
         totalAttempts: 1,
         gateRejections: { "kills-mutant": 1 },
+        failureKinds: {},
         rescuedByRetry: 0, cacheHits: 0,
       },
     });
@@ -157,6 +159,7 @@ describe("renderReport — 검증 요약", () => {
         rejectedBy: { "kills-mutant": 2 },
         totalAttempts: 5,
         gateRejections: { "kills-mutant": 2, "passes-on-original": 1 },
+        failureKinds: {},
         rescuedByRetry: 0, cacheHits: 0,
       },
     });
@@ -204,6 +207,7 @@ describe("renderReport — 길이 상한", () => {
         rejectedBy: {},
         totalAttempts: 400,
         gateRejections: {},
+        failureKinds: {},
         rescuedByRetry: 0, cacheHits: 0,
       },
     });

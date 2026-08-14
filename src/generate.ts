@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { cacheKey, type GenerationCache } from "./cache.js";
 import { describeExports } from "./exports.js";
+import { classifyFailure, type FailureKind } from "./failure.js";
 import type { LLMProvider } from "./llm/provider.js";
 import {
   buildUserPrompt,
@@ -19,6 +20,8 @@ export type Attempt = {
   index: number;
   gates: GateResult[];
   rejectedAt?: GateName;
+  /** 왜 떨어졌는지. 일회성 정규식 대신 코드가 분류한다. */
+  failureKind?: FailureKind;
 };
 
 export type GenerationResult = {
@@ -151,7 +154,13 @@ export async function generateKillingTest(
       runFullSuite: opts.runFullSuite,
     });
 
-    attempts.push({ index: i, gates: outcome.gates, rejectedAt: outcome.rejectedAt });
+    const failedGate = outcome.gates.find((gate) => !gate.ok);
+    attempts.push({
+      index: i,
+      gates: outcome.gates,
+      rejectedAt: outcome.rejectedAt,
+      failureKind: failedGate ? classifyFailure(failedGate.detail).kind : undefined,
+    });
 
     if (outcome.accepted) {
       return { mutant, accepted: true, testSource, testFileRel, attempts };
@@ -181,6 +190,8 @@ export type Summary = {
    * 버렸는가"이고 이 프로젝트의 존재 이유다.
    */
   gateRejections: Record<string, number>;
+  /** 실패 원인별 집계. 어디를 고쳐야 하는지 알려주는 숫자다. */
+  failureKinds: Record<string, number>;
   /** 게이트에 한 번 걸렸다가 재시도로 살아난 수 */
   rescuedByRetry: number;
   /**
@@ -198,6 +209,7 @@ export type Summary = {
 export function summarize(results: GenerationResult[]): Summary {
   const rejectedBy: Record<string, number> = {};
   const gateRejections: Record<string, number> = {};
+  const failureKinds: Record<string, number> = {};
   let totalAttempts = 0;
   let rescuedByRetry = 0;
 
@@ -211,6 +223,9 @@ export function summarize(results: GenerationResult[]): Summary {
       hitGate = true;
       gateRejections[attempt.rejectedAt] =
         (gateRejections[attempt.rejectedAt] ?? 0) + 1;
+      if (attempt.failureKind) {
+        failureKinds[attempt.failureKind] = (failureKinds[attempt.failureKind] ?? 0) + 1;
+      }
     }
     if (hitGate && r.accepted) rescuedByRetry++;
 
@@ -226,6 +241,7 @@ export function summarize(results: GenerationResult[]): Summary {
     rejectedBy,
     totalAttempts,
     gateRejections,
+    failureKinds,
     rescuedByRetry,
     cacheHits: 0,
   };

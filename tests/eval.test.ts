@@ -94,7 +94,7 @@ describe("computeMetrics", () => {
       {
         ...scanned,
         status: "generated",
-        summary: { total: 4, accepted: 3, rejectedBy: { "kills-mutant": 1 }, totalAttempts: 6, gateRejections: {}, rescuedByRetry: 0, cacheHits: 0 },
+        summary: { total: 4, accepted: 3, rejectedBy: { "kills-mutant": 1 }, totalAttempts: 6, gateRejections: {}, failureKinds: {}, rescuedByRetry: 0, cacheHits: 0 },
       },
       100,
     );
@@ -108,7 +108,7 @@ describe("computeMetrics", () => {
       {
         ...scanned,
         status: "generated",
-        summary: { total: 0, accepted: 0, rejectedBy: {}, totalAttempts: 0, gateRejections: {}, rescuedByRetry: 0, cacheHits: 0 },
+        summary: { total: 0, accepted: 0, rejectedBy: {}, totalAttempts: 0, gateRejections: {}, failureKinds: {}, rescuedByRetry: 0, cacheHits: 0 },
       },
       100,
     );

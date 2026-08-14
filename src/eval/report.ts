@@ -77,6 +77,22 @@ export function renderEvalReport(run: EvalRun, comparison?: Comparison): string 
     );
   }
 
+  const kinds = Object.entries(a.failureKinds ?? {});
+  if (kinds.length > 0) {
+    lines.push(
+      "",
+      "## 실패 원인",
+      "",
+      "어디를 고쳐야 하는지 알려주는 숫자다. 일회성 정규식이 아니라 코드가 분류한다.",
+      "",
+      "| 원인 | 건수 |",
+      "|---|---|",
+      ...kinds
+        .sort((x, y) => y[1] - x[1])
+        .map(([kind, n]) => `| \`${kind}\` | ${n} |`),
+    );
+  }
+
   lines.push(
     "",
     "## 표본별",

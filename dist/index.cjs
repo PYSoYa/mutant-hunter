@@ -516,6 +516,64 @@ function typeText(text, limit = 120) {
   return cleaned.length > limit ? `${cleaned.slice(0, limit)}\u2026` : cleaned;
 }
 
+// src/failure.ts
+var ASSERTION = /expected\s+(.+?)\s+to\s+(?:be|equal|deeply equal|contain|match)\s+(.+?)(?:\s*\/\/|$)/ims;
+function classifyFailure(detail) {
+  if (/상한을 넘겨 강제 종료|초과로 강제 종료/.test(detail)) {
+    return { kind: "timeout" };
+  }
+  if (/Transform failed|SyntaxError/.test(detail)) {
+    return { kind: "syntax" };
+  }
+  if (/Cannot find module|Failed to resolve import|ERR_MODULE_NOT_FOUND/.test(detail)) {
+    return { kind: "import" };
+  }
+  if (/No test files found|no tests? found/i.test(detail)) {
+    return { kind: "no-tests" };
+  }
+  if (/is not a function|is not defined|ReferenceError|TypeError/.test(detail)) {
+    return { kind: "missing-api" };
+  }
+  const m = ASSERTION.exec(detail);
+  if (m) {
+    return {
+      kind: "assertion",
+      actual: trim(m[1]),
+      expected: trim(m[2])
+    };
+  }
+  if (/AssertionError/.test(detail)) return { kind: "assertion" };
+  return { kind: "unknown" };
+}
+function retryGuidance(failure) {
+  switch (failure.kind) {
+    case "assertion":
+      if (failure.actual && failure.expected) {
+        return `\uB2E8\uC5B8\uC774 \uD2C0\uB838\uB2E4. \uC6D0\uBCF8 \uCF54\uB4DC\uB294 \uC2E4\uC81C\uB85C \`${failure.actual}\`\uB97C \uB0B4\uB193\uC558\uB294\uB370 \uD14C\uC2A4\uD2B8\uB294 \`${failure.expected}\`\uB97C \uAE30\uB300\uD588\uB2E4.
+
+\`${failure.actual}\`\uAC00 \uC633\uC740 \uAC12\uC774\uB2E4. \uAE30\uB300\uAC12\uC744 \uADF8\uAC83\uC73C\uB85C \uACE0\uCE58\uB418, **\uADF8 \uAC12\uC774 \uBBA4\uD134\uD2B8\uC5D0\uC11C\uB3C4 \uAC19\uAC8C \uB098\uC624\uBA74 \uC18C\uC6A9\uC5C6\uB2E4.** \uBBA4\uD134\uD2B8\uAC00 \uB9CC\uB4E4\uC5B4\uB0B4\uB294 \uAC12\uC774 \uBB34\uC5C7\uC778\uC9C0 \uBA3C\uC800 \uB530\uC838\uBCF4\uACE0, \uB450 \uAC12\uC774 \uC2E4\uC81C\uB85C \uB2E4\uB978 \uC785\uB825\uC744 \uACE8\uB77C\uB77C.`;
+      }
+      return "\uB2E8\uC5B8\uC774 \uC6D0\uBCF8 \uCF54\uB4DC\uC5D0\uC11C \uC2E4\uD328\uD588\uB2E4. \uAE30\uB300\uAC12\uC744 \uC9D0\uC791\uD558\uC9C0 \uB9D0\uACE0 \uC8FC\uC5B4\uC9C4 \uCF54\uB4DC\uB97C \uC190\uC73C\uB85C \uB530\uB77C\uAC00 \uACC4\uC0B0\uD558\uB77C.";
+    case "missing-api":
+      return "\uC874\uC7AC\uD558\uC9C0 \uC54A\uB294 \uC774\uB984\uC744 \uBD88\uB800\uB2E4. \uC704\uC5D0 \uC900 export \uBAA9\uB85D\uC5D0 \uC788\uB294 \uAC83\uB9CC \uC368\uB77C. \uBAA9\uB85D\uC5D0 \uC5C6\uC73C\uBA74 \uADF8 \uD568\uC218\uB294 \uC5C6\uB294 \uAC83\uC774\uB2E4.";
+    case "import":
+      return "import\uAC00 \uD574\uC11D\uB418\uC9C0 \uC54A\uC558\uB2E4. \uAE30\uC874 \uD14C\uC2A4\uD2B8 \uD30C\uC77C\uACFC **\uB611\uAC19\uC740 \uACBD\uB85C \uD45C\uAE30**\uB97C \uC368\uB77C. \uBCC4\uCE6D(`@/`)\uC744 \uC4F0\uB294\uC9C0 \uC0C1\uB300 \uACBD\uB85C\uB97C \uC4F0\uB294\uC9C0 \uADF8\uB300\uB85C \uB530\uB77C\uAC00\uB77C.";
+    case "syntax":
+      return "\uBB38\uBC95\uC774 \uAE68\uC84C\uB2E4. \uC644\uC804\uD55C \uD30C\uC77C \uD558\uB098\uB97C \uCC98\uC74C\uBD80\uD130 \uB2E4\uC2DC \uC368\uB77C.";
+    case "no-tests":
+      return "\uD14C\uC2A4\uD2B8\uAC00 \uD558\uB098\uB3C4 \uC218\uC9D1\uB418\uC9C0 \uC54A\uC558\uB2E4. `describe`/`it` \uBE14\uB85D\uC774 \uC2E4\uC81C\uB85C \uC788\uB294\uC9C0, \uCD5C\uC0C1\uC704\uC5D0\uC11C \uD638\uCD9C\uB418\uB294\uC9C0 \uD655\uC778\uD558\uB77C.";
+    case "timeout":
+      return "\uD14C\uC2A4\uD2B8\uAC00 \uB05D\uB098\uC9C0 \uC54A\uC544 \uAC15\uC81C \uC885\uB8CC\uB410\uB2E4. \uD0C0\uC774\uBA38\xB7\uC5F4\uB9B0 \uD578\uB4E4\xB7\uBB34\uD55C \uB300\uAE30\uB97C \uC5C6\uC560\uACE0, \uB3D9\uAE30\uC801\uC73C\uB85C \uD310\uC815\uD560 \uC218 \uC788\uB294 \uD615\uD0DC\uB85C \uB2E4\uC2DC \uC368\uB77C.";
+    default:
+      return "\uC704 \uC0AC\uC720\uB97C \uD574\uACB0\uD55C \uD14C\uC2A4\uD2B8\uB97C \uB2E4\uC2DC \uC791\uC131\uD558\uB77C.";
+  }
+}
+function trim(s) {
+  if (!s) return void 0;
+  const cleaned = s.trim().replace(/\s+/g, " ");
+  return cleaned.length > 120 ? `${cleaned.slice(0, 120)}\u2026` : cleaned;
+}
+
 // src/prompt.ts
 var SYSTEM_PROMPT = `\uB2F9\uC2E0\uC740 TypeScript/JavaScript \uD14C\uC2A4\uD2B8\uB97C \uC791\uC131\uD558\uB294 \uB3C4\uAD6C\uB2E4.
 
@@ -593,12 +651,13 @@ ${sourceSnippet2}
     );
   }
   if (previousFailure) {
+    const guidance = previousFailure.gate === "kills-mutant" ? "\uB2E8\uC5B8\uC774 \uB290\uC2A8\uD574\uC11C \uBBA4\uD134\uD2B8 \uCF54\uB4DC\uC5D0\uC11C\uB3C4 \uD1B5\uACFC\uD588\uB2E4. \uBBA4\uD134\uD2B8\uAC00 \uB9CC\uB4E4\uC5B4\uB0B4\uB294 \uAC12\uACFC \uC6D0\uBCF8\uC774 \uB9CC\uB4E4\uC5B4\uB0B4\uB294 \uAC12\uC774 \uC5B4\uB5BB\uAC8C \uB2E4\uB978\uC9C0 \uBA3C\uC800 \uC9DA\uACE0, \uADF8 \uCC28\uC774\uB97C \uC815\uD655\uD788 \uACA8\uB0E5\uD558\uB294 \uB2E8\uC5B8\uC744 \uC368\uB77C." : retryGuidance(classifyFailure(previousFailure.detail));
     parts.push(
       `## \uC9C1\uC804 \uC2DC\uB3C4\uAC00 \uC2E4\uD328\uD588\uB2E4
 \uAC8C\uC774\uD2B8: ${previousFailure.gate}
 \uC0AC\uC720: ${truncate(previousFailure.detail, MAX_FAILURE_CHARS)}
 
-` + (previousFailure.gate === "kills-mutant" ? "\uB2E8\uC5B8\uC774 \uB290\uC2A8\uD574\uC11C \uBBA4\uD134\uD2B8 \uCF54\uB4DC\uC5D0\uC11C\uB3C4 \uD1B5\uACFC\uD588\uB2E4. \uBBA4\uD134\uD2B8\uAC00 \uB9CC\uB4E4\uC5B4\uB0B4\uB294 \uAC12\uACFC \uC6D0\uBCF8\uC774 \uB9CC\uB4E4\uC5B4\uB0B4\uB294 \uAC12\uC774 \uC5B4\uB5BB\uAC8C \uB2E4\uB978\uC9C0 \uBA3C\uC800 \uC9DA\uACE0, \uADF8 \uCC28\uC774\uB97C \uC815\uD655\uD788 \uACA8\uB0E5\uD558\uB294 \uB2E8\uC5B8\uC744 \uC368\uB77C." : "\uC704 \uC0AC\uC720\uB97C \uD574\uACB0\uD55C \uD14C\uC2A4\uD2B8\uB97C \uB2E4\uC2DC \uC791\uC131\uD558\uB77C.")
+` + guidance
     );
   }
   parts.push(
@@ -1081,7 +1140,13 @@ ${userPrompt}`,
       stabilityRuns: opts.stabilityRuns,
       runFullSuite: opts.runFullSuite
     });
-    attempts.push({ index: i, gates: outcome.gates, rejectedAt: outcome.rejectedAt });
+    const failedGate = outcome.gates.find((gate) => !gate.ok);
+    attempts.push({
+      index: i,
+      gates: outcome.gates,
+      rejectedAt: outcome.rejectedAt,
+      failureKind: failedGate ? classifyFailure(failedGate.detail).kind : void 0
+    });
     if (outcome.accepted) {
       return { mutant, accepted: true, testSource, testFileRel, attempts };
     }
@@ -1093,6 +1158,7 @@ ${userPrompt}`,
 function summarize(results) {
   const rejectedBy = {};
   const gateRejections = {};
+  const failureKinds = {};
   let totalAttempts = 0;
   let rescuedByRetry = 0;
   for (const r of results) {
@@ -1102,6 +1168,9 @@ function summarize(results) {
       if (!attempt.rejectedAt) continue;
       hitGate = true;
       gateRejections[attempt.rejectedAt] = (gateRejections[attempt.rejectedAt] ?? 0) + 1;
+      if (attempt.failureKind) {
+        failureKinds[attempt.failureKind] = (failureKinds[attempt.failureKind] ?? 0) + 1;
+      }
     }
     if (hitGate && r.accepted) rescuedByRetry++;
     if (r.accepted) continue;
@@ -1115,6 +1184,7 @@ function summarize(results) {
     rejectedBy,
     totalAttempts,
     gateRejections,
+    failureKinds,
     rescuedByRetry,
     cacheHits: 0
   };
