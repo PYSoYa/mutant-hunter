@@ -1,0 +1,51 @@
+{
+  "label": "baseline-v2",
+  "entries": [
+    {
+      "name": "self-week3-gates",
+      "status": "scanned",
+      "durationMs": 13802,
+      "mutationScore": 28.508124076809455,
+      "totalMutants": 677,
+      "survived": 51,
+      "noCoverage": 433,
+      "candidates": 24,
+      "filtered": {
+        "no-coverage": 307,
+        "noise-string-literal": 153
+      }
+    },
+    {
+      "name": "self-week4-action",
+      "status": "scanned",
+      "durationMs": 16774,
+      "mutationScore": 19.93006993006993,
+      "totalMutants": 572,
+      "survived": 72,
+      "noCoverage": 386,
+      "candidates": 20,
+      "filtered": {
+        "no-coverage": 266,
+        "noise-string-literal": 172
+      }
+    },
+    {
+      "name": "self-week2-scanner",
+      "status": "stryker-failed",
+      "durationMs": 6331,
+      "mutationScore": 0,
+      "totalMutants": 0,
+      "survived": 0,
+      "noCoverage": 0,
+      "candidates": 0,
+      "filtered": {}
+    }
+  ],
+  "aggregate": {
+    "entries": 3,
+    "totalMutants": 1249,
+    "totalCandidates": 44,
+    "weightedMutationScore": 24.579663730984787,
+    "totalDurationMs": 36907
+  }
+}

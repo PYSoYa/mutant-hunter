@@ -23,6 +23,12 @@ export const PRESETS = {
     baseURL: "https://api.groq.com/openai/v1",
     model: "llama-3.3-70b-versatile",
   },
+  mistral: {
+    baseURL: "https://api.mistral.ai/v1",
+    // 코드 전용 모델(codestral-latest)도 같은 엔드포인트에서 쓸 수 있다.
+    // 어느 쪽이 뮤턴트를 잘 죽이는지는 평가 하네스로 재서 정한다.
+    model: "mistral-small-latest",
+  },
   openrouter: {
     baseURL: "https://openrouter.ai/api/v1",
     model: "deepseek/deepseek-chat",

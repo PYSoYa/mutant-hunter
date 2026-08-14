@@ -60,6 +60,13 @@ describe("buildStrykerConfig", () => {
     expect(c["tempDirName"]).toBe(`${WORK_DIR}/tmp`);
   });
 
+  it("샌드박스에서 타입체크 비활성화를 끈다", () => {
+    // Stryker 기본값은 파일 맨 위에 // @ts-nocheck 를 붙여 모든 줄 번호를
+    // 1씩 민다. 우리는 뮤턴트를 줄/칸 오프셋으로 적용하므로 치명적이다.
+    // 실제로 자기 자신을 대상으로 돌렸을 때 이것 때문에 스캔이 죽었다.
+    expect(buildStrykerConfig(base)["disableTypeChecks"]).toBe(false);
+  });
+
   it("러너 설정 파일을 러너 이름 아래에 넣는다", () => {
     const c = buildStrykerConfig({ ...base, runnerConfigFile: "vitest.mut.ts" });
     expect(c["vitest"]).toEqual({ configFile: "vitest.mut.ts" });

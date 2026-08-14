@@ -264,12 +264,20 @@ Stryker 런타임 설치 (--no-save): @stryker-mutator/core, @stryker-mutator/vi
 # Gemini (Google AI Studio 무료 티어)
 GEMINI_API_KEY=...            # GEMINI_MODEL 로 모델 변경 가능
 
-# OpenAI 호환 API — DeepSeek / Groq / OpenRouter
-MH_PROVIDER=groq              # deepseek | groq | openrouter
+# OpenAI 호환 API — DeepSeek / Groq / Mistral / OpenRouter
+MH_PROVIDER=groq              # deepseek | groq | mistral | openrouter
 MH_API_KEY=...
 MH_MODEL=...                  # 선택, 프리셋 기본값 대체
 MH_BASE_URL=...               # 선택, 프리셋 없이 직접 지정
+
+# 호출 페이싱 — 429를 맞고 기다리는 것보다 처음부터 안 맞는 게 싸다
+MH_RPM=20                     # 분당 요청 수 (기본값)
+MH_MIN_INTERVAL_MS=...        # 직접 지정. 지정 시 MH_RPM 무시
 ```
+
+기본 모델은 **별칭**을 쓴다(`gemini-flash-latest`). 버전을 코드에 박아두면
+언젠가 반드시 썩는다 — 실제로 `gemini-2.0-flash`를 하드코딩했다가 단종으로
+404가 났고, 확인해 보니 `gemini-2.5-flash`도 이미 죽어 있었다.
 
 `MH_API_KEY`가 있으면 그쪽을 우선한다. 명시적으로 지정한 쪽이 이겨야
 "왜 Gemini가 불렸지" 같은 혼란이 없다.
