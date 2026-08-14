@@ -1,0 +1,7 @@
+diff --git a/lib/llm/jsonGuard.ts b/lib/llm/jsonGuard.ts
+index aaa..bbb 100644
+--- a/lib/llm/jsonGuard.ts
++++ b/lib/llm/jsonGuard.ts
+@@ -37,0 +38,2 @@ export function extractJson(raw: string): unknown {
++    if (ch === '"') {
++      inString = !inString;
