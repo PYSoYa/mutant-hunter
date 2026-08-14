@@ -1,29 +1,34 @@
 {
   "entries": [
     {
-      "name": "jsonGuard-scanner",
+      "name": "self-week3-gates",
       "source": {
-        "type": "local",
-        "path": "/private/tmp/claude-501/-Users-yunseokpark-devel/5058c690-4fb6-4a23-9671-1b822951cd15/scratchpad/spike/target"
+        "type": "git",
+        "url": "https://github.com/PYSoYa/mutant-hunter.git",
+        "sha": "3f72e8a"
       },
-      "diff": {
-        "type": "file",
-        "path": "../tests/fixtures/sample.diff"
-      },
-      "notes": "1주차 스파이크 대상. JSON 추출 스캐너 — 문자열/이스케이프 처리에 실제 갭이 있다. ⚠️ 로컬 경로 표본이라 재현 불가 — 9주차에 git SHA 고정 OSS 표본으로 교체해야 한다."
+      "diff": { "type": "refs", "base": "703c052", "head": "3f72e8a" },
+      "notes": "3주차 PR — 게이트·프롬프트·뮤턴트 적용 로직. 순수 함수가 많아 뮤테이션이 잘 붙는다."
     },
     {
-      "name": "self-dogfood",
+      "name": "self-week4-action",
       "source": {
-        "type": "local",
-        "path": ".."
+        "type": "git",
+        "url": "https://github.com/PYSoYa/mutant-hunter.git",
+        "sha": "5c157cf"
       },
-      "diff": {
-        "type": "refs",
-        "base": "main",
-        "head": "HEAD"
+      "diff": { "type": "refs", "base": "3f72e8a", "head": "5c157cf" },
+      "notes": "4주차 PR — Actions 배관과 리포트 렌더링. 문자열 조립이 많아 성격이 다르다."
+    },
+    {
+      "name": "self-week2-scanner",
+      "source": {
+        "type": "git",
+        "url": "https://github.com/PYSoYa/mutant-hunter.git",
+        "sha": "ddd282c"
       },
-      "notes": "MutantHunter 자신. 4주차에 커버리지 구멍이 드러난 표본."
+      "diff": { "type": "refs", "base": "826222f", "head": "ddd282c" },
+      "notes": "2주차 PR — diff 파싱과 범위 병합. 경계 조건이 빽빽하다."
     }
   ]
 }

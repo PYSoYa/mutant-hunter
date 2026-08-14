@@ -63,6 +63,16 @@ export function buildStrykerConfig(opts: StrykerRunOptions): Record<string, unkn
     tempDirName: `${WORK_DIR}/tmp`,
     // 대상 repo에 커밋되지 않도록 증분 캐시도 작업 디렉터리 안에 둔다.
     incremental: false,
+    /**
+     * Stryker는 기본적으로 샌드박스의 파일 맨 위에 `// @ts-nocheck`를 붙인다.
+     * 그러면 **모든 줄 번호가 1씩 밀린다.**
+     *
+     * 이 도구는 뮤턴트를 줄/칸 오프셋으로 적용하고, 대상 repo의 테스트도
+     * 줄 번호를 단언할 수 있다. 실제로 우리 자신을 대상으로 돌렸을 때
+     * 이 한 줄 때문에 초기 테스트 실행이 실패해 스캔이 통째로 죽었다.
+     * 샌드박스는 원본과 같은 줄 번호를 가져야 한다.
+     */
+    disableTypeChecks: false,
   };
 
   if (opts.excludeStringLiterals) {

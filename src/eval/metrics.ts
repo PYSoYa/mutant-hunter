@@ -130,6 +130,13 @@ export function aggregate(entries: EntryMetrics[]): Aggregate {
 export type EvalRun = {
   /** 호출자가 찍어 넣는다. 하네스는 시계를 직접 읽지 않는다. */
   label: string;
+  /**
+   * 이 실행에 쓴 provider. 생성 단계를 돌리지 않았으면 없다.
+   *
+   * 어떤 모델이 만든 숫자인지 모른 채 두 실행을 비교하면
+   * 프롬프트 개선과 모델 교체를 구분할 수 없다.
+   */
+  provider?: string;
   entries: EntryMetrics[];
   aggregate: Aggregate;
 };
@@ -149,6 +156,8 @@ export type Comparison = {
   added: string[];
   /** 이번 실행에서 사라진 표본 — 조용한 커버리지 축소를 잡는다 */
   removed: string[];
+  /** provider가 바뀌었는가. 바뀌었다면 프롬프트 개선과 구분할 수 없다 */
+  providerChanged: boolean;
   hasRegression: boolean;
 };
 
@@ -162,6 +171,11 @@ const REGRESSION_THRESHOLD = 2;
  * 방향을 섞으면 "개선"과 "악화"가 뒤집혀 보고된다.
  */
 export function compareRuns(before: EvalRun, after: EvalRun): Comparison {
+  const providerChanged =
+    before.provider !== undefined &&
+    after.provider !== undefined &&
+    before.provider !== after.provider;
+
   const beforeNames = new Set(before.entries.map((e) => e.name));
   const afterNames = new Set(after.entries.map((e) => e.name));
 
@@ -185,6 +199,7 @@ export function compareRuns(before: EvalRun, after: EvalRun): Comparison {
     deltas,
     added: [...afterNames].filter((n) => !beforeNames.has(n)),
     removed,
+    providerChanged,
     // 표본이 사라진 것도 회귀다. 어려운 표본을 빼면 점수는 언제든 올라간다.
     hasRegression: deltas.some((d) => d.regression) || removed.length > 0,
   };

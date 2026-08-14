@@ -1,0 +1,37 @@
+{
+  "label": "mistral-v1",
+  "provider": "mistral",
+  "entries": [
+    {
+      "name": "self-week3-gates",
+      "status": "generated",
+      "durationMs": 34117,
+      "mutationScore": 28.508124076809455,
+      "totalMutants": 677,
+      "survived": 51,
+      "noCoverage": 433,
+      "candidates": 24,
+      "filtered": {
+        "no-coverage": 307,
+        "noise-string-literal": 153
+      },
+      "attempted": 2,
+      "accepted": 2,
+      "acceptRate": 100,
+      "llmCalls": 2,
+      "rejectedBy": {}
+    }
+  ],
+  "aggregate": {
+    "entries": 1,
+    "totalMutants": 677,
+    "totalCandidates": 24,
+    "weightedMutationScore": 28.508124076809455,
+    "totalDurationMs": 34117,
+    "attempted": 2,
+    "accepted": 2,
+    "acceptRate": 100,
+    "llmCalls": 2,
+    "rejectedBy": {}
+  }
+}

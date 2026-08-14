@@ -5,7 +5,9 @@ export function renderEvalReport(run: EvalRun, comparison?: Comparison): string 
   const lines: string[] = [
     `# 평가 결과 — ${run.label}`,
     "",
-    `표본 ${a.entries}개 / 뮤턴트 ${a.totalMutants}개 / ${(a.totalDurationMs / 1000).toFixed(1)}초`,
+    `표본 ${a.entries}개 / 뮤턴트 ${a.totalMutants}개 / ` +
+      `${(a.totalDurationMs / 1000).toFixed(1)}초` +
+      (run.provider ? ` / provider \`${run.provider}\`` : ""),
     "",
     "| 지표 | 값 |",
     "|---|---|",
@@ -97,6 +99,13 @@ function renderComparison(c: Comparison): string[] {
       `⚠️ 사라진 표본: ${c.removed.join(", ")}`,
       "",
       "표본이 줄면 점수가 오르기 쉽다. 축소 자체를 회귀로 본다.",
+    );
+  }
+  if (c.providerChanged) {
+    // 모델과 프롬프트를 한 번에 바꾸면 무엇이 효과를 냈는지 알 수 없다.
+    lines.push(
+      "",
+      "⚠️ provider가 바뀌었다. 이 비교로는 프롬프트 개선과 모델 교체를 구분할 수 없다.",
     );
   }
   if (c.added.length > 0) {

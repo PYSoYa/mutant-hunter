@@ -1,5 +1,6 @@
 import { LLMError, type GenerateRequest, type GenerateResponse, type LLMProvider } from "./provider.js";
-import { parseRetryDelayMs, waitMs } from "./gemini.js";
+import { DEFAULT_TIMEOUT_MS, parseRetryDelayMs, waitMs } from "./gemini.js";
+import type { RateLimiter } from "./rate-limit.js";
 
 /**
  * OpenAI 호환 `/chat/completions` provider.
@@ -13,6 +14,10 @@ export type OpenAICompatOptions = {
   baseURL: string;
   model: string;
   maxRetries?: number;
+  /** 단일 요청 타임아웃. 없으면 응답이 안 와도 영원히 매달린다. */
+  timeoutMs?: number;
+  /** HTTP 요청 단위 페이싱. 재시도가 제한을 우회하지 않도록 매 시도마다 건다. */
+  rateLimiter?: RateLimiter;
   /** 로그·리포트에 표시할 이름 */
   label?: string;
 };
@@ -22,6 +27,12 @@ export const PRESETS = {
   groq: {
     baseURL: "https://api.groq.com/openai/v1",
     model: "llama-3.3-70b-versatile",
+  },
+  mistral: {
+    baseURL: "https://api.mistral.ai/v1",
+    // 코드 전용 모델(codestral-latest)도 같은 엔드포인트에서 쓸 수 있다.
+    // 어느 쪽이 뮤턴트를 잘 죽이는지는 평가 하네스로 재서 정한다.
+    model: "mistral-small-latest",
   },
   openrouter: {
     baseURL: "https://openrouter.ai/api/v1",
@@ -55,15 +66,23 @@ export class OpenAICompatProvider implements LLMProvider {
 
     for (let attempt = 0; attempt <= this.maxRetries; attempt++) {
       if (attempt > 0) await sleep(waitMs(attempt, hintedDelayMs));
+      await this.opts.rateLimiter?.acquire();
 
-      const res = await fetch(`${this.opts.baseURL}/chat/completions`, {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-          authorization: `Bearer ${this.opts.apiKey}`,
-        },
-        body: JSON.stringify(body),
-      });
+      let res: Response;
+      try {
+        res = await fetch(`${this.opts.baseURL}/chat/completions`, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            authorization: `Bearer ${this.opts.apiKey}`,
+          },
+          body: JSON.stringify(body),
+          signal: AbortSignal.timeout(this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS),
+        });
+      } catch (err) {
+        lastError = err instanceof Error ? err.message : String(err);
+        continue;
+      }
 
       if (res.ok) {
         const json = (await res.json()) as ChatCompletion;
@@ -101,6 +120,7 @@ export class OpenAICompatProvider implements LLMProvider {
  */
 export function openAICompatFromEnv(
   env: NodeJS.ProcessEnv = process.env,
+  rateLimiter?: RateLimiter,
 ): OpenAICompatProvider | undefined {
   const apiKey = env["MH_API_KEY"];
   if (!apiKey) return undefined;
@@ -117,6 +137,7 @@ export function openAICompatFromEnv(
     apiKey,
     baseURL,
     model,
+    rateLimiter,
     label: presetName ?? "openai-compat",
   });
 }

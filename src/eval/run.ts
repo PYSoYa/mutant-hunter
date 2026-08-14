@@ -59,7 +59,12 @@ export async function runEval(
     results.push(computeMetrics(entry.name, result, now() - started));
   }
 
-  return { label: opts.label, entries: results, aggregate: aggregate(results) };
+  return {
+    label: opts.label,
+    provider: opts.provider?.name,
+    entries: results,
+    aggregate: aggregate(results),
+  };
 }
 
 /** 표본을 디스크에 준비하고 repo 루트 경로를 돌려준다. */

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   backoffMs,
+  DEFAULT_TIMEOUT_MS,
   MAX_RETRY_WAIT_MS,
   parseRetryDelayMs,
   waitMs,
@@ -70,5 +71,20 @@ describe("waitMs", () => {
 
   it("상한을 넘지 않는다", () => {
     expect(waitMs(1, 999_000)).toBe(MAX_RETRY_WAIT_MS);
+  });
+});
+
+describe("요청 타임아웃", () => {
+  it("단일 요청에 상한이 있다", () => {
+    // 타임아웃 없이 돌렸다가 평가가 fetch에 매달려 20분간 멈췄다.
+    // CPU 0%, 파일 변경 0, 로그 0 — 실패조차 하지 못하는 상태였다.
+    expect(DEFAULT_TIMEOUT_MS).toBeGreaterThan(0);
+    expect(DEFAULT_TIMEOUT_MS).toBeLessThanOrEqual(120_000);
+  });
+
+  it("재시도 대기 상한보다는 길다", () => {
+    // 429 대기(최대 65초)보다 요청 타임아웃이 짧으면
+    // 정상적인 대기 후 재시도가 타임아웃으로 오인된다.
+    expect(DEFAULT_TIMEOUT_MS).toBeGreaterThanOrEqual(MAX_RETRY_WAIT_MS);
   });
 });
