@@ -90,6 +90,7 @@ describe("renderReport — 제안", () => {
   it("무엇을 찾았는지 도구 용어 없이 요약한다", () => {
     const md = renderReport(base);
     expect(md).toContain("테스트가 지키지 않는 지점");
+    expect(md).not.toMatch(/뮤턴트를 죽이|Stryker/);
   });
 
   it("지적을 사람 말로 설명한다", () => {
@@ -98,8 +99,71 @@ describe("renderReport — 제안", () => {
 
   it("파일별로 묶어 보여준다", () => {
     const md = renderReport(base);
+    // 파일 제목 아래에 있으므로 줄 번호만 쓴다. 경로를 두 번 쓰지 않는다.
     expect(md).toContain("#### `lib/guard.ts`");
     expect(md).toContain("**L38**");
+  });
+
+  it("변이 결과를 diff로 보여준다", () => {
+    // 원본만 보여주면 "항상 거짓이 되어도"가 무엇인지 상상해야 한다.
+    const md = renderReport(base);
+    expect(md).toContain("```diff");
+    expect(md).toContain("+ false");
+  });
+
+  it("여러 줄 원본은 첫 줄과 생략 표시로 접는다", () => {
+    // 블록 전체가 바뀌는 뮤턴트는 원본이 수십 줄이라 한 줄로 접으면
+    // 오히려 읽기 나쁘다.
+    const md = renderReport({
+      ...base,
+      results: [
+        {
+          ...accepted(),
+          mutant: {
+            ...MUTANT,
+            original: "{\n  const a = 1;\n  const b = 2;\n  return a + b;\n}",
+            replacement: "{}",
+          },
+        },
+      ],
+    });
+    expect(md).toContain("줄 더");
+    expect(md).toContain("+ {}");
+  });
+
+  it("첫 줄이 여는 괄호뿐이면 다음 줄까지 보여준다", () => {
+    // "- {" 한 줄은 정보가 없다.
+    const md = renderReport({
+      ...base,
+      results: [
+        {
+          ...accepted(),
+          mutant: {
+            ...MUTANT,
+            original: "{\n  중요한코드();\n  또다른코드();\n  마지막();\n}",
+            replacement: "{}",
+          },
+        },
+      ],
+    });
+    expect(md).toContain("중요한코드");
+  });
+
+  it("repo와 sha를 알면 코드 위치를 링크로 만든다", () => {
+    const md = renderReport(base, { repo: "o/r", sha: "abc123" });
+    expect(md).toContain("https://github.com/o/r/blob/abc123/lib/guard.ts#L38");
+  });
+
+  it("repo를 모르면 링크 없이 렌더링한다", () => {
+    const md = renderReport(base);
+    expect(md).not.toContain("https://github.com/");
+    expect(md).toContain("**L38**");
+  });
+
+  it("숫자를 표로 훑을 수 있게 한다", () => {
+    // 문장으로 늘어놓으면 읽지 않는다.
+    const md = renderReport(base);
+    expect(md).toContain("| 검사한 파일 | 테스트가 지키지 않는 지점 | 뮤테이션 스코어 |");
   });
 
   it("테스트 소스와 경로를 접이식으로 담는다", () => {
