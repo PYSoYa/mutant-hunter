@@ -1429,15 +1429,22 @@ function buildStrykerConfig(opts) {
     // 대상 repo에 커밋되지 않도록 증분 캐시도 작업 디렉터리 안에 둔다.
     incremental: false,
     /**
-     * Stryker는 기본적으로 샌드박스의 파일 맨 위에 `// @ts-nocheck`를 붙인다.
-     * 그러면 **모든 줄 번호가 1씩 밀린다.**
+     * 러너에 따라 갈린다. 둘 다 실측으로 확인했다.
      *
-     * 이 도구는 뮤턴트를 줄/칸 오프셋으로 적용하고, 대상 repo의 테스트도
-     * 줄 번호를 단언할 수 있다. 실제로 우리 자신을 대상으로 돌렸을 때
-     * 이 한 줄 때문에 초기 테스트 실행이 실패해 스캔이 통째로 죽었다.
-     * 샌드박스는 원본과 같은 줄 번호를 가져야 한다.
+     * **vitest → false.** Stryker가 파일 맨 위에 `// @ts-nocheck`를 붙이면
+     * 모든 줄 번호가 1씩 밀린다. 줄 번호를 단언하는 테스트가 있으면 초기
+     * 실행이 실패해 스캔이 통째로 죽는다 (우리 자신을 대상으로 돌렸을 때
+     * 실제로 겪었다). vitest는 esbuild로 변환하며 타입 검사를 하지 않으므로
+     * 끄는 편이 안전하다.
+     *
+     * **jest → true.** ts-jest는 **계측된 코드까지 타입 검사한다.** Stryker의
+     * 헬퍼(`stryMutAct_9fa48("12")`)가 `TS2554: Expected 0 arguments`로
+     * 터져서 초기 실행이 실패한다. 여기서는 켜야 한다.
+     *
+     * "vitest 또는 jest 지원"이라고 문서에 써놓고 jest를 한 번도 돌려보지
+     * 않아서 이 차이를 몰랐다.
      */
-    disableTypeChecks: false
+    disableTypeChecks: opts.disableTypeChecks ?? opts.testRunner === "jest"
   };
   if (opts.excludeStringLiterals) {
     config["mutator"] = { excludedMutations: ["StringLiteral"] };

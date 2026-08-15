@@ -60,11 +60,23 @@ describe("buildStrykerConfig", () => {
     expect(c["tempDirName"]).toBe(`${WORK_DIR}/tmp`);
   });
 
-  it("샌드박스에서 타입체크 비활성화를 끈다", () => {
-    // Stryker 기본값은 파일 맨 위에 // @ts-nocheck 를 붙여 모든 줄 번호를
-    // 1씩 민다. 우리는 뮤턴트를 줄/칸 오프셋으로 적용하므로 치명적이다.
-    // 실제로 자기 자신을 대상으로 돌렸을 때 이것 때문에 스캔이 죽었다.
+  it("vitest에서는 타입체크 비활성화를 끈다", () => {
+    // @ts-nocheck가 붙으면 줄 번호가 1씩 밀려, 줄 번호를 단언하는
+    // 테스트가 있는 repo에서 초기 실행이 실패한다.
     expect(buildStrykerConfig(base)["disableTypeChecks"]).toBe(false);
+  });
+
+  it("jest에서는 타입체크 비활성화를 켠다", () => {
+    // ts-jest는 계측된 코드까지 타입 검사한다. Stryker 헬퍼가
+    // TS2554: Expected 0 arguments 로 터져 초기 실행이 실패한다.
+    const c = buildStrykerConfig({ ...base, testRunner: "jest" });
+    expect(c["disableTypeChecks"]).toBe(true);
+  });
+
+  it("명시적으로 덮어쓸 수 있다", () => {
+    expect(
+      buildStrykerConfig({ ...base, disableTypeChecks: true })["disableTypeChecks"],
+    ).toBe(true);
   });
 
   it("러너 설정 파일을 러너 이름 아래에 넣는다", () => {

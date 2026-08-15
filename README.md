@@ -345,7 +345,7 @@ Gemini 무료 티어는 모델당 요청 20회에서 막힌다. 6주차 실측�
 - uses: actions/setup-node@v4
   with: { node-version: 20 }
 - run: npm ci
-- uses: PYSoYa/mutant-hunter@main
+- uses: PYSoYa/mutant-hunter@v1
   with:
     github-token: ${{ secrets.GITHUB_TOKEN }}
   env:
@@ -393,6 +393,7 @@ npx가 **레지스트리에서 조용히 내려받고 있었기 때문**이다. 
 | Node.js | 20 이상 |
 | 대상 언어 | TypeScript / JavaScript |
 | 대상 테스트 러너 | vitest 또는 jest (`package.json`에서 자동 감지) |
+| jest 사용 시 | ts-jest 조합까지 실측 확인 |
 | 대상 repo 상태 | 테스트가 **전부 통과하는** 상태여야 한다 |
 
 마지막 조건이 중요하다. 이미 깨진 테스트가 있으면 "뮤턴트 때문에 실패한 것"과
@@ -531,6 +532,8 @@ CI가 번들과 소스의 어긋남을 검사하므로, 소스를 고쳤으면 �
 - [ ] 8주차 — 대시보드
 - [ ] 9주차 — 외부 OSS repo 검증
 - [ ] 10주차 — 문서·데모
+- [x] jest 경로 실측 검증
+- [x] 액션 실제 GitHub Actions 실행 (PR 코멘트까지)
 
 ## 한계
 
