@@ -49,7 +49,11 @@ async function run(): Promise<void> {
     log: (m) => console.log(m),
   });
 
-  const report = renderReport(result);
+  // repo/sha를 넘겨야 코멘트의 코드 위치가 클릭 가능한 링크가 된다.
+  const report = renderReport(result, {
+    repo: env["GITHUB_REPOSITORY"],
+    sha: pr.headSha ?? env["GITHUB_SHA"],
+  });
   writeStepSummary(report, env);
 
   setOutput("status", result.status, env);

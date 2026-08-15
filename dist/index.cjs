@@ -1680,7 +1680,7 @@ function oneLine(source, limit = 100) {
 // src/report.ts
 var COMMENT_MARKER = "<!-- mutant-hunter -->";
 var MAX_BODY = 6e4;
-function renderReport(result) {
+function renderReport(result, context = {}) {
   const head = [COMMENT_MARKER, "## \u{1F9EC} MutantHunter", ""];
   switch (result.status) {
     case "no-changes":
@@ -1702,7 +1702,7 @@ function renderReport(result) {
   const scan = result.scan;
   if (!scan) return [...head, "\uACB0\uACFC\uAC00 \uC5C6\uC2B5\uB2C8\uB2E4."].join("\n");
   const accepted = dedupe(result.results ?? []);
-  const lines = [...head, summaryLine(result, accepted.length), ""];
+  const lines = [...head, ...summaryBlock(result, accepted.length), ""];
   if (result.status === "scanned") {
     lines.push("\uD14C\uC2A4\uD2B8 \uC0DD\uC131\uC740 \uC2E4\uD589\uD558\uC9C0 \uC54A\uC558\uC2B5\uB2C8\uB2E4.", "");
   } else if (accepted.length === 0) {
@@ -1714,21 +1714,30 @@ function renderReport(result) {
       ""
     );
   } else {
-    lines.push(...renderSuggestions(accepted));
+    lines.push(...renderSuggestions(accepted, context));
   }
   lines.push(...renderAppendix(result, scan));
   return cap(lines.join("\n"));
 }
-function summaryLine(result, acceptedCount) {
+function summaryBlock(result, acceptedCount) {
   const scan = result.scan;
   const gaps = scan?.candidates.length ?? 0;
   const files = new Set(result.ranges.map((r) => r.path)).size;
-  const found = `\uBCC0\uACBD\uB41C \uCF54\uB4DC ${files}\uAC1C \uD30C\uC77C\uC5D0\uC11C **\uD14C\uC2A4\uD2B8\uAC00 \uC9C0\uD0A4\uC9C0 \uC54A\uB294 \uC9C0\uC810 ${gaps}\uACF3**\uC744 \uCC3E\uC558\uC2B5\uB2C8\uB2E4.`;
-  if (result.status === "scanned") return found;
-  if (acceptedCount === 0) return found;
-  return `${found}
-
-\uADF8\uC911 **${acceptedCount}\uACF3**\uC740 \uAD6C\uBA4D\uC744 \uB9C9\uB294 \uD14C\uC2A4\uD2B8\uB97C \uB9CC\uB4E4\uC5B4 \uC2E4\uC81C\uB85C \uACB0\uD568\uC744 \uC7A1\uB294\uC9C0 \uD655\uC778\uD588\uC2B5\uB2C8\uB2E4.`;
+  const score = scan?.stats.mutationScore ?? 0;
+  const rows = [
+    "| \uAC80\uC0AC\uD55C \uD30C\uC77C | \uD14C\uC2A4\uD2B8\uAC00 \uC9C0\uD0A4\uC9C0 \uC54A\uB294 \uC9C0\uC810 | \uBBA4\uD14C\uC774\uC158 \uC2A4\uCF54\uC5B4 |",
+    "|---|---|---|",
+    `| ${files} | **${gaps}\uACF3** | ${score.toFixed(1)}% |`
+  ];
+  if (result.status === "scanned") return rows;
+  if (acceptedCount === 0) {
+    return rows;
+  }
+  return [
+    ...rows,
+    "",
+    `\uADF8\uC911 **${acceptedCount}\uACF3**\uC5D0 \uB300\uD574 \uAD6C\uBA4D\uC744 \uB9C9\uB294 \uD14C\uC2A4\uD2B8\uB97C \uB9CC\uB4E4\uACE0, **\uC2E4\uC81C\uB85C \uACB0\uD568\uC744 \uC7A1\uB294\uC9C0 \uC2E4\uD589\uD574\uC11C \uD655\uC778**\uD588\uC2B5\uB2C8\uB2E4.`
+  ];
 }
 function dedupe(results) {
   const seen = /* @__PURE__ */ new Set();
@@ -1742,7 +1751,7 @@ function dedupe(results) {
   }
   return out;
 }
-function renderSuggestions(accepted) {
+function renderSuggestions(accepted, context) {
   const lines = ["### \uC81C\uC548", ""];
   const byFile = /* @__PURE__ */ new Map();
   for (const r of accepted) {
@@ -1755,13 +1764,14 @@ function renderSuggestions(accepted) {
     for (const r of items) {
       const m = r.mutant;
       lines.push(
-        `**L${m.line}** \u2014 ${explainMutant(m)}`,
+        `##### ${lineRef(m.path, m.line, context)} \xB7 ${explainMutant(m)}`,
         "",
-        "```ts",
-        oneLine(m.original, 200),
+        // 변이 결과를 보여줘야 "항상 참이 되어도"가 무엇인지 상상하지 않아도 된다.
+        "```diff",
+        ...diffLines(m.original, m.replacement),
         "```",
         "",
-        `<details><summary>\uC774 \uAD6C\uBA4D\uC744 \uB9C9\uB294 \uD14C\uC2A4\uD2B8 \u2014 ${lineCount(r.testSource)}\uC904 (\uAC80\uC99D \uC644\uB8CC)</summary>`,
+        `<details><summary>\uC774 \uAD6C\uBA4D\uC744 \uB9C9\uB294 \uD14C\uC2A4\uD2B8 \u2014 ${lineCount(r.testSource)}\uC904 (5\uAC1C \uAC80\uC99D \uD1B5\uACFC)</summary>`,
         "",
         `\`${r.testFileRel}\``,
         "",
@@ -1844,6 +1854,25 @@ function filterLabel(reason) {
       return reason;
   }
 }
+function lineRef(path, line, context) {
+  const label = `L${line}`;
+  if (!context.repo || !context.sha) return `**${label}**`;
+  return `[**${label}**](https://github.com/${context.repo}/blob/${context.sha}/${path}#L${line})`;
+}
+function diffLines(original, replacement) {
+  return [...side("-", original), ...side("+", replacement)];
+}
+function side(sign, code) {
+  const lines = code.split("\n").map((l) => l.trimEnd()).filter((l) => l.trim());
+  if (lines.length <= 3) {
+    return lines.map((l) => `${sign} ${oneLine(l, 120)}`);
+  }
+  const head = lines.slice(0, /^[{([]$/.test(lines[0]?.trim() ?? "") ? 2 : 1);
+  return [
+    ...head.map((l) => `${sign} ${oneLine(l, 120)}`),
+    `${sign} \u2026 ${lines.length - head.length}\uC904 \uB354`
+  ];
+}
 function lineCount(source) {
   return source ? source.split("\n").length : 0;
 }
@@ -1882,7 +1911,10 @@ async function run() {
     maxAttempts: getNumberInput("max-attempts"),
     log: (m) => console.log(m)
   });
-  const report = renderReport(result);
+  const report = renderReport(result, {
+    repo: env["GITHUB_REPOSITORY"],
+    sha: pr.headSha ?? env["GITHUB_SHA"]
+  });
   writeStepSummary(report, env);
   setOutput("status", result.status, env);
   setOutput("candidates", String(result.scan?.candidates.length ?? 0), env);

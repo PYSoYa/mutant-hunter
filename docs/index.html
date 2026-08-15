@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MutantHunter — 증명된 테스트만 제안하는 PR 봇</title>
+<meta name="description" content="테스트가 못 잡는 구멍을 찾아 테스트를 만들고, 실제로 버그를 잡는지 실행으로 증명한 것만 PR에 제안합니다.">
+<style>
+:root { color-scheme: light dark; --fg:#111827; --dim:#6b7280; --accent:#7c3aed; --line:#e5e7eb; --bg:#fff; }
+@media (prefers-color-scheme: dark) { :root { --fg:#e5e7eb; --dim:#9ca3af; --accent:#a78bfa; --line:#374151; --bg:#0b0f19; } }
+* { box-sizing: border-box; }
+body { margin:0; background:var(--bg); color:var(--fg);
+  font:16px/1.7 -apple-system,"Apple SD Gothic Neo","Noto Sans KR",sans-serif; }
+main { max-width: 780px; margin: 0 auto; padding: 56px 20px 100px; }
+h1 { font-size: 30px; margin: 0 0 8px; letter-spacing: -0.02em; }
+h2 { font-size: 20px; margin: 44px 0 12px; letter-spacing: -0.01em; }
+.lead { font-size: 18px; color: var(--dim); margin: 0 0 28px; }
+.links { display:flex; flex-wrap:wrap; gap:10px; margin: 0 0 8px; }
+.links a { display:inline-block; padding:8px 14px; border:1px solid var(--line); border-radius:8px;
+  text-decoration:none; color:var(--fg); font-size:14px; }
+.links a.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+pre { background: color-mix(in srgb, var(--fg) 6%, transparent); padding:14px 16px;
+  border-radius:8px; overflow-x:auto; font-size:13px; line-height:1.6; }
+code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+table { border-collapse:collapse; width:100%; font-size:14px; margin:12px 0; }
+th,td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); }
+th { color:var(--dim); font-weight:600; }
+blockquote { margin:16px 0; padding:12px 18px; border-left:3px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent); border-radius:0 8px 8px 0; }
+.dim { color:var(--dim); font-size:14px; }
+footer { margin-top:64px; padding-top:20px; border-top:1px solid var(--line); color:var(--dim); font-size:13px; }
+</style>
+<body>
+<main>
+  <h1>🧬 MutantHunter</h1>
+  <p class="lead">
+    테스트가 못 잡는 구멍을 찾아 테스트를 만들고,<br>
+    <strong>실제로 버그를 잡는지 실행으로 증명한 것만</strong> PR에 제안합니다.
+  </p>
+
+  <div class="links">
+    <a class="primary" href="https://github.com/PYSoYa/mutant-hunter">GitHub 저장소</a>
+    <a href="./dashboard.html">측정 대시보드</a>
+    <a href="https://github.com/PYSoYa/mutant-hunter/pull/11">실행 증거 (PR 코멘트)</a>
+    <a href="https://github.com/PYSoYa/mutant-hunter/blob/main/docs/findings.md">측정 기록</a>
+  </div>
+
+  <h2>왜 만들었나</h2>
+  <p>
+    커버리지는 “그 줄이 <strong>실행됐는가</strong>”만 봅니다.
+    “그 줄이 틀렸을 때 <strong>누가 알아채는가</strong>”는 묻지 않습니다.
+  </p>
+<pre><code>export function grade(score: number) {
+  if (score &gt;= 90) return "A";   // 테스트가 이 줄을 실행은 함
+  return "F";
+}</code></pre>
+  <p>
+    <code>grade(95)</code>만 테스트하면 커버리지는 올라가지만,
+    누가 <code>&gt;= 90</code>을 <code>&gt;= 10</code>으로 바꿔도
+    <strong>아무 테스트도 실패하지 않습니다.</strong>
+    그런 지점을 찾아 메우는 도구입니다.
+  </p>
+
+  <h2>동작</h2>
+<pre><code>PR diff → 변경된 코드를 일부러 망가뜨림 (뮤테이션)
+        → 테스트 재실행
+        → 전부 통과? = 그 코드는 틀려도 아무도 모른다
+        → LLM이 그 구멍을 막는 테스트 생성
+        → 5개 게이트로 검증
+        → 통과한 것만 PR 코멘트</code></pre>
+
+  <blockquote>
+    <strong>핵심은 세 번째 게이트입니다.</strong>
+    현재 코드에서 통과하는 그럴듯한 테스트는 얼마든지 만들어집니다.
+    실측에서 뮤턴트 102개를 돌렸을 때 생성 테스트 <strong>157건을 폐기</strong>했고,
+    그중 <strong>53건이 “통과하지만 결함은 못 잡는”</strong> 테스트였습니다.
+    코드 리뷰로는 걸러내기 어렵습니다.
+  </blockquote>
+
+  <h2>언제 값을 내는가</h2>
+  <table>
+    <tr><th>대상</th><th>뮤테이션 스코어</th><th>채택</th></tr>
+    <tr><td><code>unjs/ufo</code></td><td>88%</td><td>0 / 3</td></tr>
+    <tr><td><code>unjs/destr</code></td><td>86%</td><td>0 / 7</td></tr>
+    <tr><td><code>antfu/utils</code></td><td>0%</td><td><strong>6 / 7</strong></td></tr>
+  </table>
+  <p class="dim">
+    이미 잘 테스트된 코드에는 제안할 것이 없고, 그때 침묵하는 것이 올바른 동작입니다.
+    테스트가 얇은 코드에서 값을 냅니다.
+  </p>
+
+  <h2>쓰는 법</h2>
+  <p>대상 저장소에 커밋되는 것은 워크플로우 파일 하나뿐입니다.</p>
+<pre><code>- uses: actions/checkout@v4
+  with: { fetch-depth: 0 }
+- uses: actions/setup-node@v4
+  with: { node-version: 20 }
+- run: npm ci
+- uses: PYSoYa/mutant-hunter@v1
+  with:
+    github-token: ${{ secrets.GITHUB_TOKEN }}
+  env:
+    MH_PROVIDER: mistral
+    MH_API_KEY: ${{ secrets.MISTRAL_API_KEY }}</code></pre>
+  <p class="dim">
+    TypeScript / JavaScript · vitest 또는 jest · 무료 API 키 하나
+    (Gemini · Groq · Mistral · OpenRouter)
+  </p>
+
+  <h2>만들면서 배운 것</h2>
+  <ul>
+    <li><strong>측정 장치를 먼저 만들었습니다.</strong> 잡음 폭을 재고 나서
+      앞선 A/B 판정 두 개를 스스로 철회했습니다.</li>
+    <li><strong>프롬프트 튜닝은 효과를 입증하지 못했습니다.</strong>
+      세 번 시도했고 전부 잡음 범위였습니다. 대신 <em>대상 선택</em>이
+      3배 차이를 만들었습니다.</li>
+    <li><strong>외부 저장소에 처음 돌리자</strong> 자체 환경에서 가려져 있던
+      버그 3건이 드러났습니다.</li>
+  </ul>
+  <p class="dim">
+    측정 과정과 그때마다 틀린 것은
+    <a href="https://github.com/PYSoYa/mutant-hunter/blob/main/docs/findings.md">측정 기록</a>에 남겼습니다.
+  </p>
+
+  <footer>
+    박윤석 · <a href="https://github.com/PYSoYa/mutant-hunter">github.com/PYSoYa/mutant-hunter</a>
+  </footer>
+</main>
+</body>
+</html>

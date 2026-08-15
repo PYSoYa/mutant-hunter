@@ -19,11 +19,14 @@ const scan = read("candidates.json") as PipelineResult["scan"];
 
 const first = gen.results?.[0]?.mutant.path ?? "src";
 console.log(
-  renderReport({
-    status: "generated",
-    ranges: [{ path: first, start: 1, end: 1, symbol: "preview" }],
-    scan,
-    results: gen.results,
-    summary: gen.summary,
-  }),
+  renderReport(
+    {
+      status: "generated",
+      ranges: [{ path: first, start: 1, end: 1, symbol: "preview" }],
+      scan,
+      results: gen.results,
+      summary: gen.summary,
+    },
+    { repo: "PYSoYa/mutant-hunter", sha: "HEAD" },
+  ),
 );
