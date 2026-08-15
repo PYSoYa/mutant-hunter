@@ -343,8 +343,8 @@ function providerFromEnv(env = process.env) {
 }
 
 // src/pipeline.ts
-var import_node_fs8 = require("node:fs");
-var import_node_path7 = require("node:path");
+var import_node_fs9 = require("node:fs");
+var import_node_path8 = require("node:path");
 
 // src/cache.ts
 var import_node_crypto = require("node:crypto");
@@ -475,9 +475,143 @@ function isMutableSource(path) {
   return true;
 }
 
+// src/equivalents.ts
+var import_node_fs3 = require("node:fs");
+var import_node_path2 = require("node:path");
+
+// src/mutants.ts
+var NOISE_MUTATORS = /* @__PURE__ */ new Set(["StringLiteral"]);
+function mutantKey(m) {
+  return `${m.path}:${m.mutatorName}:${m.line}:${m.column}`;
+}
+function scanReport(report, opts = {}) {
+  const parsed = report;
+  const equivalents = opts.suspectedEquivalents ?? /* @__PURE__ */ new Set();
+  const candidates = [];
+  const filtered = [];
+  let killed = 0;
+  let survived = 0;
+  let noCoverage = 0;
+  let timeout = 0;
+  let total = 0;
+  for (const [path, file] of Object.entries(parsed.files ?? {})) {
+    const lines = file.source.split("\n");
+    for (const raw of file.mutants) {
+      total++;
+      switch (raw.status) {
+        case "Killed":
+          killed++;
+          continue;
+        case "Timeout":
+          timeout++;
+          continue;
+        case "NoCoverage":
+          noCoverage++;
+          break;
+        case "Survived":
+          survived++;
+          break;
+        default:
+          continue;
+      }
+      const mutant = {
+        id: raw.id,
+        path,
+        mutatorName: raw.mutatorName,
+        status: raw.status,
+        line: raw.location.start.line,
+        column: raw.location.start.column,
+        endLine: raw.location.end.line,
+        endColumn: raw.location.end.column,
+        replacement: raw.replacement ?? "",
+        original: sliceSource(lines, raw.location)
+      };
+      const reason = classify(mutant, equivalents);
+      if (reason) filtered.push({ mutant, reason });
+      else candidates.push(mutant);
+    }
+  }
+  const scored = killed + timeout + survived + noCoverage;
+  return {
+    candidates,
+    filtered,
+    stats: {
+      total,
+      killed,
+      survived,
+      noCoverage,
+      timeout,
+      mutationScore: scored === 0 ? 100 : (killed + timeout) / scored * 100
+    }
+  };
+}
+function classify(m, equivalents) {
+  if (NOISE_MUTATORS.has(m.mutatorName)) return "noise-string-literal";
+  if (equivalents.has(mutantKey(m))) return "suspected-equivalent";
+  if (m.status === "NoCoverage") return "no-coverage";
+  return null;
+}
+function sliceSource(lines, loc) {
+  const { start, end } = loc;
+  if (start.line === end.line) {
+    return (lines[start.line - 1] ?? "").slice(start.column - 1, end.column - 1);
+  }
+  const first = (lines[start.line - 1] ?? "").slice(start.column - 1);
+  const middle = lines.slice(start.line, end.line - 1);
+  const last = (lines[end.line - 1] ?? "").slice(0, end.column - 1);
+  return [first, ...middle, last].join("\n");
+}
+
+// src/equivalents.ts
+var SUSPECT_THRESHOLD = 2;
+function equivalentsPath(repoRoot, workDir) {
+  return (0, import_node_path2.join)(repoRoot, workDir, "equivalents.json");
+}
+function loadRecord(path) {
+  if (!(0, import_node_fs3.existsSync)(path)) return {};
+  try {
+    const raw = JSON.parse((0, import_node_fs3.readFileSync)(path, "utf8"));
+    if (Array.isArray(raw)) {
+      const out = {};
+      for (const k of raw) if (typeof k === "string") out[k] = SUSPECT_THRESHOLD;
+      return out;
+    }
+    if (typeof raw === "object" && raw !== null) {
+      const out = {};
+      for (const [k, v] of Object.entries(raw)) {
+        if (typeof v === "number" && Number.isFinite(v)) out[k] = v;
+      }
+      return out;
+    }
+  } catch {
+  }
+  return {};
+}
+function suspectedKeys(record) {
+  return new Set(
+    Object.entries(record).filter(([, n]) => n >= SUSPECT_THRESHOLD).map(([k]) => k)
+  );
+}
+function recordNotKilled(record, results) {
+  const next = { ...record };
+  for (const r of results) {
+    if (r.accepted || r.error) continue;
+    if (r.attempts.length === 0) continue;
+    const allNotKilled = r.attempts.every((a) => a.rejectedAt === "kills-mutant");
+    if (!allNotKilled) continue;
+    const key = mutantKey(r.mutant);
+    next[key] = (next[key] ?? 0) + 1;
+  }
+  return next;
+}
+function saveRecord(path, record) {
+  (0, import_node_fs3.mkdirSync)((0, import_node_path2.dirname)(path), { recursive: true });
+  (0, import_node_fs3.writeFileSync)(path, JSON.stringify(record, null, 0));
+}
+
 // src/generate.ts
-var import_node_fs6 = require("node:fs");
-var import_node_path5 = require("node:path");
+var import_node_fs7 = require("node:fs");
+var import_node_path6 = require("node:path");
 
 // src/exports.ts
 var import_ts_morph = require("ts-morph");
@@ -579,16 +713,16 @@ function trim(s) {
 }
 
 // src/imports.ts
-var import_node_fs4 = require("node:fs");
-var import_node_path3 = require("node:path");
+var import_node_fs5 = require("node:fs");
+var import_node_path4 = require("node:path");
 
 // src/testfile.ts
-var import_node_fs3 = require("node:fs");
-var import_node_path2 = require("node:path");
+var import_node_fs4 = require("node:fs");
+var import_node_path3 = require("node:path");
 var TEST_PATTERN = /\.(test|spec)\.[cm]?[jt]sx?$/;
 var MAX_SCAN_FILES = 2e3;
 function findSiblingTest(repoRoot, sourceRelPath) {
-  const stem = (0, import_node_path2.basename)(sourceRelPath, (0, import_node_path2.extname)(sourceRelPath));
+  const stem = (0, import_node_path3.basename)(sourceRelPath, (0, import_node_path3.extname)(sourceRelPath));
   let best;
   let scanned = 0;
   for (const rel of walkFiles(repoRoot)) {
@@ -596,11 +730,11 @@ function findSiblingTest(repoRoot, sourceRelPath) {
     if (!TEST_PATTERN.test(rel)) continue;
     let content;
     try {
-      content = (0, import_node_fs3.readFileSync)((0, import_node_path2.join)(repoRoot, rel), "utf8");
+      content = (0, import_node_fs4.readFileSync)((0, import_node_path3.join)(repoRoot, rel), "utf8");
     } catch {
       continue;
     }
-    const sameName = (0, import_node_path2.basename)(rel).replace(/\.(test|spec)\.[cm]?[jt]sx?$/, "") === stem;
+    const sameName = (0, import_node_path3.basename)(rel).replace(/\.(test|spec)\.[cm]?[jt]sx?$/, "") === stem;
     const score = occurrences(content, stem) + (sameName ? 1e3 : 0);
     if (score === 0) continue;
     if (!best || score > best.score) best = { path: rel, score };
@@ -609,24 +743,24 @@ function findSiblingTest(repoRoot, sourceRelPath) {
 }
 function generatedTestPath(repoRoot, sourceRelPath, mutantId, sibling) {
   const safeId = mutantId.replace(/[^a-zA-Z0-9_-]/g, "_");
-  const stem = (0, import_node_path2.basename)(sourceRelPath, (0, import_node_path2.extname)(sourceRelPath));
+  const stem = (0, import_node_path3.basename)(sourceRelPath, (0, import_node_path3.extname)(sourceRelPath));
   const name = `${stem}.mh-${safeId}.test.ts`;
-  if (sibling) return (0, import_node_path2.join)((0, import_node_path2.dirname)(sibling), name);
+  if (sibling) return (0, import_node_path3.join)((0, import_node_path3.dirname)(sibling), name);
   for (const dir of ["tests", "test", "__tests__"]) {
-    if ((0, import_node_fs3.existsSync)((0, import_node_path2.join)(repoRoot, dir))) return (0, import_node_path2.join)(dir, name);
+    if ((0, import_node_fs4.existsSync)((0, import_node_path3.join)(repoRoot, dir))) return (0, import_node_path3.join)(dir, name);
   }
-  return (0, import_node_path2.join)((0, import_node_path2.dirname)(sourceRelPath), name);
+  return (0, import_node_path3.join)((0, import_node_path3.dirname)(sourceRelPath), name);
 }
 function writeGeneratedTest(repoRoot, relPath, content) {
-  (0, import_node_fs3.writeFileSync)((0, import_node_path2.join)(repoRoot, relPath), content);
+  (0, import_node_fs4.writeFileSync)((0, import_node_path3.join)(repoRoot, relPath), content);
 }
 function removeGeneratedTest(repoRoot, relPath) {
-  (0, import_node_fs3.rmSync)((0, import_node_path2.join)(repoRoot, relPath), { force: true });
+  (0, import_node_fs4.rmSync)((0, import_node_path3.join)(repoRoot, relPath), { force: true });
 }
 function* walkFiles(root) {
   let entries;
   try {
-    entries = (0, import_node_fs3.readdirSync)(root, { recursive: true });
+    entries = (0, import_node_fs4.readdirSync)(root, { recursive: true });
   } catch {
     return;
   }
@@ -651,8 +785,8 @@ function occurrences(haystack, needle) {
 
 // src/imports.ts
 function relativeImportPath(testFileRel, sourceRel) {
-  const fromDir = (0, import_node_path3.dirname)(testFileRel);
-  let rel = (0, import_node_path3.relative)(fromDir, sourceRel);
+  const fromDir = (0, import_node_path4.dirname)(testFileRel);
+  let rel = (0, import_node_path4.relative)(fromDir, sourceRel);
   rel = rel.replace(/\.(m|c)?tsx?$/, "").replace(/\.(m|c)?jsx?$/, "");
   rel = rel.split("\\").join("/");
   return rel.startsWith(".") ? rel : `./${rel}`;
@@ -670,7 +804,7 @@ function detectRunnerImport(repoRoot, maxFiles = 20) {
     if (!/\.(test|spec)\.[cm]?[jt]sx?$/.test(rel)) continue;
     let content;
     try {
-      content = (0, import_node_fs4.readFileSync)((0, import_node_path3.join)(repoRoot, rel), "utf8");
+      content = (0, import_node_fs5.readFileSync)((0, import_node_path4.join)(repoRoot, rel), "utf8");
     } catch {
       continue;
     }
@@ -909,10 +1043,10 @@ function safePosOfLine(compilerNode, line) {
 }
 
 // src/verify.ts
-var import_node_path4 = require("node:path");
+var import_node_path5 = require("node:path");
 
 // src/apply.ts
-var import_node_fs5 = require("node:fs");
+var import_node_fs6 = require("node:fs");
 function offsetOf(source, line, column) {
   let offset = 0;
   let currentLine = 1;
@@ -937,12 +1071,12 @@ function applyMutant(source, mutant) {
   return source.slice(0, start) + mutant.replacement + source.slice(end);
 }
 async function withMutantApplied(absPath, mutant, fn) {
-  const original = (0, import_node_fs5.readFileSync)(absPath, "utf8");
+  const original = (0, import_node_fs6.readFileSync)(absPath, "utf8");
   try {
-    (0, import_node_fs5.writeFileSync)(absPath, applyMutant(original, mutant));
+    (0, import_node_fs6.writeFileSync)(absPath, applyMutant(original, mutant));
     return await fn();
   } finally {
-    (0, import_node_fs5.writeFileSync)(absPath, original);
+    (0, import_node_fs6.writeFileSync)(absPath, original);
   }
 }
 
@@ -1065,7 +1199,7 @@ async function verifyGeneratedTest(opts) {
     });
     if (!original.passed) return reject("passes-on-original");
     const mutated = await withMutantApplied(
-      (0, import_node_path4.join)(repoRoot, mutant.path),
+      (0, import_node_path5.join)(repoRoot, mutant.path),
       mutant,
       () => runTests(repoRoot, runner, { testFile: testFileRel, configFile })
     );
@@ -1135,15 +1269,15 @@ function extractFailure(output, limit = 1200) {
 // src/generate.ts
 async function generateKillingTest(mutant, opts) {
   const { repoRoot, runner, provider, maxAttempts = 2 } = opts;
-  const absSource = (0, import_node_path5.join)(repoRoot, mutant.path);
+  const absSource = (0, import_node_path6.join)(repoRoot, mutant.path);
   let source;
   try {
-    source = (0, import_node_fs6.readFileSync)(absSource, "utf8");
+    source = (0, import_node_fs7.readFileSync)(absSource, "utf8");
   } catch {
     return { mutant, accepted: false, attempts: [], error: `\uC18C\uC2A4\uB97C \uC77D\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4: ${mutant.path}` };
   }
   const sibling = findSiblingTest(repoRoot, mutant.path);
-  const siblingTest = sibling ? { path: sibling, content: (0, import_node_fs6.readFileSync)((0, import_node_path5.join)(repoRoot, sibling), "utf8") } : void 0;
+  const siblingTest = sibling ? { path: sibling, content: (0, import_node_fs7.readFileSync)((0, import_node_path6.join)(repoRoot, sibling), "utf8") } : void 0;
   const snippet = sourceSnippet(
     source,
     Math.max(1, mutant.line - 15),
@@ -1263,99 +1397,16 @@ function summarize(results) {
   };
 }
 
-// src/mutants.ts
-var NOISE_MUTATORS = /* @__PURE__ */ new Set(["StringLiteral"]);
-function mutantKey(m) {
-  return `${m.path}:${m.mutatorName}:${m.line}:${m.column}`;
-}
-function scanReport(report, opts = {}) {
-  const parsed = report;
-  const equivalents = opts.suspectedEquivalents ?? /* @__PURE__ */ new Set();
-  const candidates = [];
-  const filtered = [];
-  let killed = 0;
-  let survived = 0;
-  let noCoverage = 0;
-  let timeout = 0;
-  let total = 0;
-  for (const [path, file] of Object.entries(parsed.files ?? {})) {
-    const lines = file.source.split("\n");
-    for (const raw of file.mutants) {
-      total++;
-      switch (raw.status) {
-        case "Killed":
-          killed++;
-          continue;
-        case "Timeout":
-          timeout++;
-          continue;
-        case "NoCoverage":
-          noCoverage++;
-          break;
-        case "Survived":
-          survived++;
-          break;
-        default:
-          continue;
-      }
-      const mutant = {
-        id: raw.id,
-        path,
-        mutatorName: raw.mutatorName,
-        status: raw.status,
-        line: raw.location.start.line,
-        column: raw.location.start.column,
-        endLine: raw.location.end.line,
-        endColumn: raw.location.end.column,
-        replacement: raw.replacement ?? "",
-        original: sliceSource(lines, raw.location)
-      };
-      const reason = classify(mutant, equivalents);
-      if (reason) filtered.push({ mutant, reason });
-      else candidates.push(mutant);
-    }
-  }
-  const scored = killed + timeout + survived + noCoverage;
-  return {
-    candidates,
-    filtered,
-    stats: {
-      total,
-      killed,
-      survived,
-      noCoverage,
-      timeout,
-      mutationScore: scored === 0 ? 100 : (killed + timeout) / scored * 100
-    }
-  };
-}
-function classify(m, equivalents) {
-  if (NOISE_MUTATORS.has(m.mutatorName)) return "noise-string-literal";
-  if (equivalents.has(mutantKey(m))) return "suspected-equivalent";
-  if (m.status === "NoCoverage") return "no-coverage";
-  return null;
-}
-function sliceSource(lines, loc) {
-  const { start, end } = loc;
-  if (start.line === end.line) {
-    return (lines[start.line - 1] ?? "").slice(start.column - 1, end.column - 1);
-  }
-  const first = (lines[start.line - 1] ?? "").slice(start.column - 1);
-  const middle = lines.slice(start.line, end.line - 1);
-  const last = (lines[end.line - 1] ?? "").slice(0, end.column - 1);
-  return [first, ...middle, last].join("\n");
-}
-
 // src/stryker.ts
 var import_node_child_process2 = require("node:child_process");
-var import_node_fs7 = require("node:fs");
+var import_node_fs8 = require("node:fs");
 var import_node_module = require("node:module");
-var import_node_path6 = require("node:path");
+var import_node_path7 = require("node:path");
 var STRYKER_RANGE = "^9.6.1";
 var WORK_DIR = ".mutant-hunter";
 function detectTestRunner(repoRoot) {
-  const pkgPath = (0, import_node_path6.join)(repoRoot, "package.json");
-  const pkg = JSON.parse((0, import_node_fs7.readFileSync)(pkgPath, "utf8"));
+  const pkgPath = (0, import_node_path7.join)(repoRoot, "package.json");
+  const pkg = JSON.parse((0, import_node_fs8.readFileSync)(pkgPath, "utf8"));
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
   if (deps["vitest"]) return "vitest";
   if (deps["jest"]) return "jest";
@@ -1398,7 +1449,7 @@ function buildStrykerConfig(opts) {
 }
 function resolvesFrom(repoRoot, pkg) {
   try {
-    (0, import_node_module.createRequire)((0, import_node_path6.join)(repoRoot, "package.json")).resolve(`${pkg}/package.json`);
+    (0, import_node_module.createRequire)((0, import_node_path7.join)(repoRoot, "package.json")).resolve(`${pkg}/package.json`);
     return true;
   } catch {
     return false;
@@ -1423,10 +1474,10 @@ ${stderr.slice(-1e3)}`);
   return { installed: true, packages: needed };
 }
 async function runStryker(opts) {
-  const workDir = (0, import_node_path6.join)(opts.repoRoot, WORK_DIR);
-  (0, import_node_fs7.mkdirSync)(workDir, { recursive: true });
-  const configPath = (0, import_node_path6.join)(workDir, "stryker.conf.json");
-  (0, import_node_fs7.writeFileSync)(configPath, JSON.stringify(buildStrykerConfig(opts), null, 2));
+  const workDir = (0, import_node_path7.join)(opts.repoRoot, WORK_DIR);
+  (0, import_node_fs8.mkdirSync)(workDir, { recursive: true });
+  const configPath = (0, import_node_path7.join)(workDir, "stryker.conf.json");
+  (0, import_node_fs8.writeFileSync)(configPath, JSON.stringify(buildStrykerConfig(opts), null, 2));
   const { code, stderr } = await exec(
     "npx",
     ["--no-install", "stryker", "run", configPath],
@@ -1434,7 +1485,7 @@ async function runStryker(opts) {
   );
   try {
     const report = JSON.parse(
-      (0, import_node_fs7.readFileSync)((0, import_node_path6.join)(workDir, "mutation.json"), "utf8")
+      (0, import_node_fs8.readFileSync)((0, import_node_path7.join)(workDir, "mutation.json"), "utf8")
     );
     return { ok: true, report };
   } catch {
@@ -1464,8 +1515,8 @@ async function runPipeline(opts) {
   const project = createProject(tsconfigOf(repoRoot));
   const ranges = [];
   for (const file of changed) {
-    const abs = (0, import_node_path7.join)(repoRoot, file.path);
-    if (!(0, import_node_fs8.existsSync)(abs)) continue;
+    const abs = (0, import_node_path8.join)(repoRoot, file.path);
+    if (!(0, import_node_fs9.existsSync)(abs)) continue;
     ranges.push(...resolveMutateRanges(project, abs, file.path, file.changedLines));
   }
   if (ranges.length === 0) {
@@ -1493,8 +1544,10 @@ async function runPipeline(opts) {
 ${strykerResult.stderr.slice(-2e3)}`
     };
   }
+  const eqPath = equivalentsPath(repoRoot, WORK_DIR);
+  const eqRecord = loadRecord(eqPath);
   const scan = scanReport(strykerResult.report, {
-    suspectedEquivalents: loadEquivalents(repoRoot)
+    suspectedEquivalents: suspectedKeys(eqRecord)
   });
   const { stats } = scan;
   log(
@@ -1536,6 +1589,7 @@ ${strykerResult.stderr.slice(-2e3)}`
     }
   }
   if (cache instanceof FileCache) cache.flush();
+  saveRecord(eqPath, recordNotKilled(eqRecord, results));
   const summary = { ...summarize(results), cacheHits: cache.hits };
   const apiCalls = summary.totalAttempts - summary.cacheHits;
   log(
@@ -1553,23 +1607,13 @@ function countBy(items) {
   return [...map.entries()];
 }
 function writeWorkFile(repoRoot, name, data) {
-  const dir = (0, import_node_path7.join)(repoRoot, WORK_DIR);
-  (0, import_node_fs8.mkdirSync)(dir, { recursive: true });
-  (0, import_node_fs8.writeFileSync)((0, import_node_path7.join)(dir, name), JSON.stringify(data, null, 2));
-}
-function loadEquivalents(repoRoot) {
-  const path = (0, import_node_path7.join)(repoRoot, WORK_DIR, "equivalents.json");
-  if (!(0, import_node_fs8.existsSync)(path)) return /* @__PURE__ */ new Set();
-  try {
-    const raw = JSON.parse((0, import_node_fs8.readFileSync)(path, "utf8"));
-    return new Set(Array.isArray(raw) ? raw : []);
-  } catch {
-    return /* @__PURE__ */ new Set();
-  }
+  const dir = (0, import_node_path8.join)(repoRoot, WORK_DIR);
+  (0, import_node_fs9.mkdirSync)(dir, { recursive: true });
+  (0, import_node_fs9.writeFileSync)((0, import_node_path8.join)(dir, name), JSON.stringify(data, null, 2));
 }
 function tsconfigOf(repoRoot) {
-  const p = (0, import_node_path7.join)(repoRoot, "tsconfig.json");
-  return (0, import_node_fs8.existsSync)(p) ? p : void 0;
+  const p = (0, import_node_path8.join)(repoRoot, "tsconfig.json");
+  return (0, import_node_fs9.existsSync)(p) ? p : void 0;
 }
 
 // src/explain.ts

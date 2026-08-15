@@ -2,6 +2,13 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { FileCache, openCache } from "./cache.js";
 import { isMutableSource, parseUnifiedDiff } from "./diff.js";
+import {
+  equivalentsPath,
+  loadRecord,
+  recordNotKilled,
+  saveRecord,
+  suspectedKeys,
+} from "./equivalents.js";
 import { generateKillingTest, summarize, type GenerationResult } from "./generate.js";
 import type { LLMProvider } from "./llm/provider.js";
 import { scanReport } from "./mutants.js";
@@ -90,8 +97,10 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
     };
   }
 
+  const eqPath = equivalentsPath(repoRoot, WORK_DIR);
+  const eqRecord = loadRecord(eqPath);
   const scan = scanReport(strykerResult.report, {
-    suspectedEquivalents: loadEquivalents(repoRoot),
+    suspectedEquivalents: suspectedKeys(eqRecord),
   });
 
   const { stats } = scan;
@@ -147,6 +156,10 @@ export async function runPipeline(opts: PipelineOptions): Promise<PipelineResult
 
   if (cache instanceof FileCache) cache.flush();
 
+  // 끝내 못 죽인 뮤턴트를 기록해 다음 실행에서 건너뛴다.
+  // 이 파일은 원래 읽히기만 하고 아무도 쓰지 않았다.
+  saveRecord(eqPath, recordNotKilled(eqRecord, results));
+
   const summary = { ...summarize(results), cacheHits: cache.hits };
   const apiCalls = summary.totalAttempts - summary.cacheHits;
   log(
@@ -173,18 +186,6 @@ function writeWorkFile(repoRoot: string, name: string, data: unknown): void {
   const dir = join(repoRoot, WORK_DIR);
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, name), JSON.stringify(data, null, 2));
-}
-
-/** 등가 뮤턴트 의심 목록. 없으면 빈 집합. */
-function loadEquivalents(repoRoot: string): Set<string> {
-  const path = join(repoRoot, WORK_DIR, "equivalents.json");
-  if (!existsSync(path)) return new Set();
-  try {
-    const raw = JSON.parse(readFileSync(path, "utf8")) as unknown;
-    return new Set(Array.isArray(raw) ? (raw as string[]) : []);
-  } catch {
-    return new Set();
-  }
 }
 
 function tsconfigOf(repoRoot: string): string | undefined {

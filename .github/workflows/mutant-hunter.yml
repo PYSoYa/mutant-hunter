@@ -1,0 +1,47 @@
+# 자기 자신에게 액션을 돌린다.
+#
+# 로컬에서 INPUT_* 환경변수를 흉내 내 검증하는 것으로는 부족하다.
+# composite step의 env 전달, outputs 전파, 코멘트 권한, 체크아웃 깊이는
+# 실제 Actions에서만 드러난다. 외부 repo에 처음 돌렸을 때 자체 환경에서
+# 가려져 있던 버그 3건이 나온 것과 같은 이유다.
+name: MutantHunter
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # base...head diff를 계산하려면 전체 이력이 필요하다.
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      # 대상 repo(= 우리 자신)의 테스트가 통과하는 상태여야 판정이 의미를 갖는다.
+      - run: npm ci
+
+      - id: hunt
+        uses: ./
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          max-mutants: "3"
+        env:
+          MH_PROVIDER: mistral
+          MH_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+
+      - name: 출력 확인
+        run: |
+          echo "status=${{ steps.hunt.outputs.status }}"
+          echo "candidates=${{ steps.hunt.outputs.candidates }}"
+          echo "accepted=${{ steps.hunt.outputs.accepted }}"
+          echo "mutation-score=${{ steps.hunt.outputs.mutation-score }}"
